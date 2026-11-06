@@ -1,0 +1,13 @@
+# Runtime state: never publish credentials, rooms, invitations or attachments.
+/data/*
+!/data/personas.json
+node_modules/
+*.log
+*.log.err
+*.tmp
+.env
+.env.*
+!.env.example
+coverage/
+testlog.txt
+smoke-*.log
