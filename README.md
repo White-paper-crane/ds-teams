@@ -25,6 +25,26 @@
 
 ![房间手机版](docs/screenshots/room-mobile.png)
 
+### 几个关键状态
+
+超管登录：首次用终端里的注册码注册，之后用昵称和密码登录。
+
+![登录](docs/screenshots/admin-login.png)
+
+超管视角的房间页：成员条带身份，顶部有拉人、踢人、规则、报告、记忆；把某人移出后，房间会留下一条系统消息。
+
+![超管视角](docs/screenshots/admin-room-desktop.png)
+
+被邀请的人在手机上进来，只有邀请他的那一间房，没有房间列表，也看不到管理按钮：
+
+![成员视角](docs/screenshots/guest-room-mobile.png)
+
+邀请链接一人一链、用完即废；人被移出，手上那条链接立刻作废：
+
+![邀请作废](docs/screenshots/invite-expired-mobile.png)
+
+> 以上截图为本地实例实拍，成员名是演示别名，界面没做美化。
+
 ## 架构
 
 ```text
