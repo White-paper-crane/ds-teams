@@ -16,12 +16,12 @@
     --border: #d5dae4;
     --border-soft: #e6eaf0;
     --text: #1b1f27;
-    --muted: #5b6472;
-    --faint: #6e7787;
+    --muted: #4d5563;
+    --faint: #5b6472;
     --accent: #2563eb;
     --you: #2563eb;
-    --me: #0f9d6b;
-    --daman: #c2701a;
+    --me: #0b7a54;
+    --daman: #9a5512;
     --danger: #d93838;
     --radius: 10px;
   }
@@ -3671,6 +3671,7 @@
   }
 
   function renderKickList() {
+    disarmKick();
     els.kickList.textContent = '';
     const members = currentMembers().filter((member) => member.id !== 'you');
     if (!members.length) {
@@ -3683,7 +3684,7 @@
       main.appendChild(el('div', 'person-name', member.name || nameOf(member.id)));
       main.appendChild(el('div', 'person-meta', personMeta(member)));
       row.appendChild(main);
-      const button = el('button', 'btn btn-ghost', '移出');
+      const button = el('button', 'btn btn-danger-ghost', '移出');
       button.type = 'button';
       button.addEventListener('click', () => kickMember(member, button));
       row.appendChild(button);
@@ -3691,8 +3692,39 @@
     }
   }
 
+  // 移出不可撤销：沿用解散房间那套「先点一次，5 秒内再点一次」，不用 window.confirm
+  let kickArmedId = '';
+  let kickArmedBtn = null;
+  let kickArmTimer = 0;
+
+  function disarmKick(button) {
+    const target = button || kickArmedBtn;
+    kickArmedId = '';
+    kickArmedBtn = null;
+    clearTimeout(kickArmTimer);
+    kickArmTimer = 0;
+    if (target && target.isConnected) {
+      target.textContent = '移出';
+      target.classList.remove('is-armed');
+    }
+  }
+
   async function kickMember(member, button) {
     if (!state.currentId || !canManageMembers()) return;
+    if (kickArmedId !== member.id) {
+      kickArmedId = member.id;
+      kickArmedBtn = button;
+      button.textContent = '再点一次确认';
+      button.classList.add('is-armed');
+      setFormError(els.kickError, '');
+      toast('移出后对方不能再在这个房间发言，历史消息保留。5 秒内再点一次确认');
+      clearTimeout(kickArmTimer);
+      kickArmTimer = setTimeout(() => {
+        if (kickArmedId === member.id) disarmKick(button);
+      }, 5200);
+      return;
+    }
+    disarmKick(button);
     button.disabled = true;
     button.textContent = '移出中…';
     setFormError(els.kickError, '');
@@ -3791,7 +3823,7 @@
       }
     });
     els.kickBtn.addEventListener('click', openKickDialog);
-    els.kickClose.addEventListener('click', () => els.kickDialog.close());
+    els.kickClose.addEventListener('click', () => { disarmKick(); els.kickDialog.close(); });
     els.memberRoleBtn.addEventListener('click', setMemberRole);
     els.memberTransferBtn.addEventListener('click', transferOwner);
     els.memberClose.addEventListener('click', () => els.memberDialog.close());
