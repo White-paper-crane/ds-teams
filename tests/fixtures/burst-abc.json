@@ -1,0 +1,29 @@
+{
+  "limit": 5,
+  "description": "D2 burst 洪水夹具：A 房 7 条、B 房 2 条、C 房 6 条，seq 交错",
+  "messages": [
+    { "seq": 101, "roomId": "room-A", "who": "you", "kind": "text", "text": "A-1" },
+    { "seq": 102, "roomId": "room-B", "who": "you", "kind": "text", "text": "B-1" },
+    { "seq": 103, "roomId": "room-A", "who": "you", "kind": "text", "text": "A-2" },
+    { "seq": 104, "roomId": "room-C", "who": "you", "kind": "text", "text": "C-1" },
+    { "seq": 105, "roomId": "room-A", "who": "you", "kind": "text", "text": "A-3" },
+    { "seq": 106, "roomId": "room-B", "who": "you", "kind": "text", "text": "B-2" },
+    { "seq": 107, "roomId": "room-A", "who": "you", "kind": "text", "text": "A-4" },
+    { "seq": 108, "roomId": "room-C", "who": "you", "kind": "text", "text": "C-2" },
+    { "seq": 109, "roomId": "room-A", "who": "you", "kind": "text", "text": "A-5" },
+    { "seq": 110, "roomId": "room-C", "who": "you", "kind": "text", "text": "C-3" },
+    { "seq": 111, "roomId": "room-A", "who": "you", "kind": "text", "text": "A-6" },
+    { "seq": 112, "roomId": "room-C", "who": "you", "kind": "text", "text": "C-4" },
+    { "seq": 113, "roomId": "room-A", "who": "you", "kind": "text", "text": "A-7" },
+    { "seq": 114, "roomId": "room-C", "who": "you", "kind": "text", "text": "C-5" },
+    { "seq": 115, "roomId": "room-C", "who": "you", "kind": "text", "text": "C-6" }
+  ],
+  "expect": {
+    "targets": [
+      { "roomId": "room-B", "seq": 102, "skipped": 0 },
+      { "roomId": "room-B", "seq": 106, "skipped": 0 },
+      { "roomId": "room-A", "seq": 113, "skipped": 6 },
+      { "roomId": "room-C", "seq": 115, "skipped": 5 }
+    ]
+  }
+}

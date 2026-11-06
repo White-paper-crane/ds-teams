@@ -1,0 +1,4021 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<!-- interactive-widget=resizes-content：Android Chrome 108+ 弹键盘时缩布局视口（iOS 忽略，走下面的 visualViewport 脚本） -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="color-scheme" content="light">
+<title>ds-teams · 三人房间</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f2f4f8'/%3E%3Ccircle cx='10' cy='16' r='3' fill='%235b9dff'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%233ecf8e'/%3E%3Ccircle cx='22' cy='16' r='3' fill='%23f0a04b'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --elev: #f4f6f9;
+    --elev-2: #eef1f6;
+    --border: #d5dae4;
+    --border-soft: #e6eaf0;
+    --text: #1b1f27;
+    --muted: #5b6472;
+    --faint: #6e7787;
+    --accent: #2563eb;
+    --you: #2563eb;
+    --me: #0f9d6b;
+    --daman: #c2701a;
+    --danger: #d93838;
+    --radius: 10px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+
+  html, body { margin: 0; height: 100%; }
+  /* iOS 上软键盘弹出时，Safari 会「顶」整个文档再弹回来（用户说的回弹），
+     被顶走的那一下正好把底部输入区和最新消息盖掉。把文档钉死，只让内部滚动容器滚动。 */
+  /* touch-action:manipulation 让浏览器不再为「是否双击缩放」而等待，
+     tap 立刻派发 click。这样就不必用 touchstart 去偷延迟（那会误触 + 丢焦点 + 坏无障碍）。 */
+  html { overflow: hidden; overscroll-behavior: none; touch-action: manipulation; }
+  body {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.55 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  ::selection { background: rgba(107, 164, 255, .28); }
+  :focus-visible { outline: 2px solid rgba(107, 164, 255, .55); outline-offset: 2px; }
+
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #bfc6d5; border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #adb6c8; background-clip: content-box; }
+
+  .who-you { --who: var(--you); }
+  .who-me { --who: var(--me); }
+  .who-daman { --who: var(--daman); }
+  .who-system { --who: var(--muted); }
+  .who-guest { --who: var(--muted); }
+
+  .app {
+    display: grid;
+    grid-template-columns: 330px minmax(0, 1fr);
+    height: 100vh;
+    height: 100dvh;
+    /* 键盘弹出时 dvh 不会变（iOS 键盘不改布局视口），真值由脚本按 visualViewport 写进来 */
+    height: var(--app-height, 100dvh);
+  }
+
+  /* ---------- 左侧房间列表 ---------- */
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+  }
+  .sidebar-head { padding: 16px 16px 10px; }
+  .brand { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; row-gap: 8px; }
+  .brand-text { flex: 1 1 auto; }
+  .brand-mark {
+    width: 34px; height: 34px; flex: none;
+    display: flex; align-items: center; justify-content: center; gap: 3px;
+    border-radius: 9px;
+    background: #dadfe8;
+    border: 1px solid var(--border);
+  }
+  .brand-mark i { width: 5px; height: 5px; border-radius: 50%; display: block; }
+  .brand-mark i:nth-child(1) { background: var(--you); }
+  .brand-mark i:nth-child(2) { background: var(--me); }
+  .brand-mark i:nth-child(3) { background: var(--daman); }
+  .brand-text { min-width: 0; }
+  .brand-title { font-size: 15px; font-weight: 600; letter-spacing: .2px; line-height: 1.3; }
+  .brand-sub { font-size: 11px; color: var(--faint); line-height: 1.4; white-space: nowrap; }
+  .btn-new { margin-left: auto; flex: none; padding: 6px 10px; font-size: 12px; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    border: 1px solid var(--border);
+    background: var(--elev);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 13px;
+    line-height: 1.3;
+    transition: background .15s ease, border-color .15s ease, color .15s ease, opacity .15s ease;
+  }
+  .btn:hover { background: #d2d8e2; border-color: #b5bdcd; }
+  .btn:active { background: #ccd3df; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); border-color: transparent; color: #dfe6f4; font-weight: 600; }
+  .btn-primary:hover { background: #05357d; }
+  .btn-ghost { background: transparent; }
+  .btn-danger-ghost { color: #5f0404; border-color: rgba(255, 123, 123, .22); background: transparent; }
+  .btn-danger-ghost:hover { background: rgba(255, 123, 123, .09); border-color: rgba(255, 123, 123, .4); }
+  .btn-danger-ghost.is-armed { color: #3b0202; background: rgba(255, 123, 123, .18); border-color: rgba(255, 123, 123, .6); }
+
+  .rooms {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px 10px 12px;
+  }
+  .room-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 11px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    color: inherit;
+    transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+  }
+  .room-item:hover { background: #dbe0e8; }
+  .room-item.active { background: #d4dae5; border-color: #bbc4d4; box-shadow: inset 2px 0 0 var(--accent); }
+  .room-item-top { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+  .room-item-title {
+    display: block;
+    min-width: 0;
+    font-size: 13.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .room-item .pill { flex: none; font-size: 10px; line-height: 16px; padding: 0 7px; }
+  .room-item-meta {
+    display: flex;
+    gap: 10px;
+    margin-top: 3px;
+    font-size: 11px;
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .room-last {
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+  }
+  .room-last-empty { color: var(--faint); }
+  .last-kind { color: var(--faint); font-size: 11px; margin-right: 4px; }
+  .last-who { color: #3b4355; }
+
+  .pill {
+    display: inline-block;
+    font-size: 11px;
+    line-height: 18px;
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .pill.is-open { color: #22905d; border-color: rgba(62, 207, 142, .25); background: rgba(62, 207, 142, .08); }
+  .pill.is-closed { color: var(--muted); border-color: var(--border); background: var(--elev); }
+  /* 唤醒治理 chip（docs/wake-governance.md §8）：HIGH_CONTEXT_AGE 时黄色提示 */
+  .pill.wake-chip { color: var(--muted); }
+  .pill.wake-chip.is-warn { color: #92400e; border-color: rgba(245, 158, 11, .45); background: rgba(253, 230, 138, .55); }
+  /* 评审端延迟告警开关（data/settings.json 的 reviewLatency）：关=灰，开=绿，超阈值记过 warn=黄 */
+  .pill.warn-chip { cursor: pointer; font: inherit; color: var(--muted); }
+  .pill.warn-chip.is-on { color: #22905d; border-color: rgba(62, 207, 142, .35); background: rgba(62, 207, 142, .1); }
+  .pill.warn-chip.is-firing { color: #92400e; border-color: rgba(245, 158, 11, .45); background: rgba(253, 230, 138, .55); }
+  .pill.warn-chip.is-critical { color: #b91c1c; border-color: rgba(239, 68, 68, .55); background: rgba(254, 202, 202, .6); }
+  /* 配置生效倒计时（data/room-sessions.json 改后桥端 ≤5s 才换会话）：生效中=黄，已生效=绿 */
+  .pill.sessions-chip { cursor: pointer; font: inherit; color: var(--muted); }
+  .pill.sessions-chip.is-pending { color: #92400e; border-color: rgba(245, 158, 11, .45); background: rgba(253, 230, 138, .55); }
+  .pill.sessions-chip.is-done { color: #22905d; border-color: rgba(62, 207, 142, .35); background: rgba(62, 207, 142, .1); }
+
+  .rooms-filter {
+    padding: 2px 14px 6px;
+    display: flex;
+    justify-content: flex-start;
+  }
+  .filter-chip {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--faint);
+    font: inherit;
+    font-size: 11.5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+  }
+  .filter-chip.is-on {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .filter-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .rooms-empty {
+    padding: 26px 14px;
+    text-align: center;
+    font-size: 12.5px;
+    line-height: 1.8;
+    color: var(--faint);
+  }
+  .sidebar-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 16px 14px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 11px;
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- 右侧详情 ---------- */
+  .detail {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--bg);
+  }
+  .room { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+
+  .empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 30px;
+    text-align: center;
+  }
+  .empty-mark { display: flex; gap: 5px; opacity: .55; margin-bottom: 4px; }
+  .empty-mark i { width: 7px; height: 7px; border-radius: 50%; display: block; background: var(--faint); }
+  .empty-mark i:nth-child(1) { background: var(--you); }
+  .empty-mark i:nth-child(2) { background: var(--me); }
+  .empty-mark i:nth-child(3) { background: var(--daman); }
+  .empty-title { font-size: 14px; color: var(--muted); }
+  .empty-hint { font-size: 12px; color: var(--faint); max-width: 320px; line-height: 1.7; }
+
+  .room-head {
+    flex: none;
+    padding: 14px 22px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .room-title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .room-title-row h1 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .head-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+  .conn { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--faint); margin-right: 2px; white-space: nowrap; }
+  .conn .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); display: block; }
+  .conn.live { color: #26805a; }
+  .conn.live .dot { background: var(--me); box-shadow: 0 0 0 3px rgba(62, 207, 142, .12); }
+  .conn.connecting { color: #75490f; }
+  .conn.connecting .dot { background: var(--daman); animation: pulse 1.4s ease-in-out infinite; }
+  .conn.down { color: #5f0404; }
+  .conn.down .dot { background: var(--danger); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+  .members { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  /* 解散确认条：超管 5 秒内可否决，不点则放行 */
+  .close-request-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+    background: rgba(214, 69, 69, 0.12); border: 1px solid rgba(214, 69, 69, 0.4);
+  }
+  .close-request-bar[hidden] { display: none; }
+  .close-request-text { flex: 1 1 240px; font-size: 13px; color: var(--text); }
+  .member {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    background: #dfe3ea;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .member .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--who, var(--muted)); display: block; flex: none; }
+  .member .role { font-size: 10.5px; color: var(--faint); }
+  /* 点得动的成员（群主/超管点开可以改身份）——样式保持原样，只加手感 */
+  button.member.is-manageable {
+    font: inherit;
+    cursor: pointer;
+    color: var(--muted);
+  }
+  button.member.is-manageable:hover { border-color: var(--border); background: #d6dbe4; }
+  button.member.is-manageable:focus-visible { outline: 2px solid var(--accent, #5b7bd5); outline-offset: 1px; }
+  /* 可管理的成员后面挂一个极小的下拉箭头：光标手感之外给个能看见的暗示 */
+  .member .caret { font-size: 10px; line-height: 1; color: var(--faint); margin-left: 1px; transform: translateY(-1px); }
+  /* 被禁言：灰掉 + 虚线边 + 一个「🔇」样的提示，一眼看出这个人现在说不了话 */
+  .member.is-muted { border-style: dashed; background: #eef0f4; color: var(--faint); }
+  .member.is-muted .dot { opacity: .45; }
+  .member .mute-tag { font-size: 10px; line-height: 1; color: #b4802a; background: #fdf3d8; border-radius: 6px; padding: 1px 4px; }
+  /* 成员条实时变化：谁刚变成管理员、谁刚进来，闪一下让人抓得到（不然只是安静地换了个字）。
+     只闪 1.8 秒，闪完回到常态，不留底色——留了就像「有异常」。 */
+  @keyframes memberFlash {
+    0% { background: #fff4c9; border-color: #d8a92c; box-shadow: 0 0 0 2px rgba(216, 169, 44, .35); }
+    100% { background: #dfe3ea; border-color: var(--border-soft); box-shadow: none; }
+  }
+  .member.is-changed { animation: memberFlash 1.8s ease-out; }
+  /* 新进来的人：闪完再挂一个小圆点，明确「这是他刚到的」 */
+  .member.is-changed::after { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--daman); flex: none; }
+  /* 左栏：有人要解散这间房，等超管裁决 */
+  .room-item .pill.is-pending { background: rgba(214, 69, 69, .16); color: #8e2020; border-color: rgba(214, 69, 69, .5); }
+
+  .timeline {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* iOS 上列表滚到头会继续拖整页（橡皮筋/回弹）。contain 把回弹截在列表内部，
+       不让它传染给 .app —— 这就是「打字时整页被顶上去」那一层抖动的来源之一。 */
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 18px 22px 24px;
+  }
+  .timeline-inner {
+    max-width: 880px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .timeline-empty {
+    padding: 40px 10px;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--faint);
+  }
+
+  .msg { display: flex; align-items: flex-start; gap: 10px; animation: rise .18s ease; }
+  @keyframes rise { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+  .avatar {
+    width: 28px; height: 28px; flex: none;
+    display: grid; place-items: center;
+    margin-top: 2px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--elev-2);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .msg.who-you .avatar { color: #04275f; background: rgba(91, 157, 255, .12); border-color: rgba(91, 157, 255, .35); }
+  .msg.who-me .avatar { color: #18754a; background: rgba(62, 207, 142, .1); border-color: rgba(62, 207, 142, .32); }
+  .msg.who-daman .avatar { color: #704208; background: rgba(240, 160, 75, .1); border-color: rgba(240, 160, 75, .32); }
+  .msg-body { flex: 1; min-width: 0; max-width: 760px; }
+  .msg-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; min-width: 0; }
+  .msg-name { font-size: 12px; font-weight: 600; color: #212836; white-space: nowrap; }
+  .msg.who-you .msg-name { color: #04275f; }
+  .msg.who-me .msg-name { color: #18754a; }
+  .msg.who-daman .msg-name { color: #704208; }
+  .msg-kind {
+    font-size: 10.5px;
+    line-height: 15px;
+    padding: 0 5px;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    color: var(--faint);
+    white-space: nowrap;
+  }
+  .msg-time { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .msg-actions { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity .15s ease; }
+  .msg:hover .msg-actions, .msg:focus-within .msg-actions { opacity: 1; }
+  .msg-action { padding: 0 4px; border: 0; background: transparent; color: var(--faint); font-size: 10.5px; line-height: 1.5; cursor: pointer; }
+  .msg-action:hover { color: var(--text); }
+  .quote-ref {
+    margin: 0 0 5px;
+    padding: 5px 9px;
+    border-left: 2px solid #9aa7bd;
+    border-radius: 4px;
+    background: #eef1f6;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--muted);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 62px;
+    overflow: hidden;
+  }
+  .quote-ref b { margin-right: 4px; color: var(--text); font-weight: 600; }
+  .msg.recalled .msg-body > *:not(.msg-head) { opacity: .55; }
+  .msg.recalled .msg-head { opacity: .7; }
+
+  .msg-text {
+    padding: 8px 12px;
+    border: 1px solid var(--border-soft);
+    border-left: 2px solid var(--who, var(--border));
+    border-radius: 4px 10px 10px 4px;
+    background: var(--elev);
+    font-size: 13.5px;
+    line-height: 1.62;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .msg.system { justify-content: center; margin: 2px 0; animation: none; }
+  /* 声明信号：不占消息卡，居中浅色小字 */
+  .msg.claim-note {
+    justify-content: center;
+    margin: 1px 0;
+    animation: none;
+  }
+  .claim-text {
+    font-size: 11px;
+    color: var(--muted);
+    opacity: .72;
+    letter-spacing: .2px;
+  }
+  .sys-text {
+    display: inline-block;
+    max-width: 82%;
+    padding: 3px 11px;
+    border: 1px dashed var(--border);
+    border-radius: 999px;
+    font-size: 11.5px;
+    color: var(--faint);
+    text-align: center;
+    word-break: break-word;
+  }
+
+  .progress-card {
+    padding: 9px 12px;
+    border: 1px solid var(--border-soft);
+    border-left: 2px solid var(--who, var(--border));
+    border-radius: 4px 9px 9px 4px;
+    background: #dde2eb;
+  }
+  .progress-top { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--faint); }
+  .progress-label { color: var(--muted); font-weight: 600; font-size: 11.5px; }
+  .progress-pct { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .task-chip {
+    padding: 1px 5px;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    background: var(--elev-2);
+    font-size: 10.5px;
+    color: var(--faint);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bar { height: 4px; margin-top: 8px; border-radius: 2px; background: #c9d0dc; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--who, var(--accent)); opacity: .8; border-radius: 2px; }
+  .progress-text {
+    margin-top: 7px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: #2f3746;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .report-card {
+    padding: 11px 14px;
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--who, var(--border));
+    border-radius: 4px 10px 10px 4px;
+    background: #dfe4eb;
+  }
+  .report-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .report-tag {
+    padding: 0 5px;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    font-size: 10.5px;
+    line-height: 16px;
+    color: var(--faint);
+    letter-spacing: .04em;
+  }
+  .report-title { font-size: 13.5px; font-weight: 600; line-height: 1.45; word-break: break-word; }
+  .report-head .badge { margin-left: auto; }
+  .report-meta { margin-top: 4px; font-size: 11px; color: var(--faint); }
+  .report-summary {
+    margin-top: 7px;
+    font-size: 13px;
+    line-height: 1.65;
+    color: #272e3b;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .report-links { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+  .report-link {
+    font-size: 12px;
+    color: var(--accent);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.6;
+  }
+  a.report-link:hover { text-decoration: underline; }
+  .report-link.invalid { color: var(--faint); }
+  .report-task { margin-top: 8px; font-size: 10.5px; color: var(--faint); }
+
+  .badge {
+    display: inline-block;
+    padding: 0 7px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 10.5px;
+    line-height: 16px;
+    white-space: nowrap;
+  }
+  .badge.good { color: #1fa068; border-color: rgba(62, 207, 142, .3); background: rgba(62, 207, 142, .08); }
+  .badge.warn { color: #97630a; border-color: rgba(240, 160, 75, .3); background: rgba(240, 160, 75, .08); }
+  .badge.bad { color: #700505; border-color: rgba(255, 123, 123, .32); background: rgba(255, 123, 123, .08); }
+  .badge.neutral { color: var(--muted); border-color: var(--border); background: var(--elev); }
+
+  .review-card {
+    padding: 9px 12px;
+    border: 1px solid var(--border-soft);
+    border-left: 2px solid var(--who, var(--border));
+    border-radius: 4px 9px 9px 4px;
+    background: #e1e5ec;
+  }
+  .review-target { font-size: 11px; color: var(--faint); margin-bottom: 4px; }
+  .review-text { font-size: 13px; line-height: 1.62; white-space: pre-wrap; word-break: break-word; }
+
+  .file-card {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 8px; border: 1px solid var(--border-soft); border-radius: 9px;
+    background: #e1e5ec; max-width: 420px;
+  }
+  .file-img { display: block; max-width: 100%; max-height: 320px; border-radius: 5px; }
+  .file-row { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+  .file-icon { font-size: 17px; }
+  .file-name { font-weight: 600; word-break: break-all; }
+  .file-size { color: var(--faint); font-size: 11px; flex: none; }
+  .file-foot { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+  .file-dl { margin-left: auto; color: var(--accent, #2f5fa8); text-decoration: none; }
+  .file-note { font-size: 12px; color: var(--muted); }
+  .attach-btn { flex: none; padding: 7px 10px; font-size: 15px; line-height: 1; }
+
+  /* ---------- 输入区 ---------- */
+  .composer {
+    flex: none;
+    padding: 10px 22px 12px;
+    border-top: 1px solid var(--border);
+    background: #e6e9ef;
+  }
+  .composer-inner { max-width: 880px; margin: 0 auto; }
+  .identity { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .who-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px;
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.5;
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+  }
+  .who-btn .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--who, var(--muted)); display: block; flex: none; }
+  .who-btn:hover:not(:disabled) { background: #dbe0e8; }
+  .who-btn[aria-pressed="true"] { color: var(--text); background: #d5dbe5; border-color: #b1bacc; }
+  .who-btn[aria-pressed="true"] .dot { box-shadow: 0 0 0 3px rgba(0, 0, 0, .06); }
+  .who-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  .composer-box {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 6px 6px 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--elev);
+    transition: border-color .15s ease;
+  }
+  .composer-box:focus-within { border-color: #a7b3c5; }
+  .composer-box textarea {
+    flex: 1;
+    min-width: 0;
+    max-height: 132px;
+    padding: 6px 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    resize: none;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--text);
+  }
+  .composer-box textarea::placeholder { color: var(--faint); }
+  .composer-box textarea:disabled { color: var(--faint); }
+  #sendBtn { flex: none; padding: 7px 16px; }
+  .composer-hint { margin-top: 6px; min-height: 15px; font-size: 11px; color: var(--faint); }
+  .composer.closed .composer-box { opacity: .5; }
+  .quote-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-left: 3px solid #6d7f9b;
+    border-radius: 8px;
+    background: #eef1f6;
+  }
+  .quote-bar-body { flex: 1; min-width: 0; }
+  .quote-bar-label { font-size: 10.5px; color: var(--faint); margin-right: 6px; }
+  .quote-bar-text {
+    display: block;
+    margin-top: 1px;
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .quote-bar .icon-btn { flex: none; }
+
+  /* ---------- 报告抽屉 ---------- */
+  .reports {
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    z-index: 20;
+    width: min(400px, 100%);
+    display: flex;
+    flex-direction: column;
+    background: #e2e6ed;
+    border-left: 1px solid var(--border);
+    box-shadow: -20px 0 40px rgba(0, 0, 0, .28);
+    transform: translateX(102%);
+    transition: transform .22s ease;
+  }
+  .reports.open { transform: none; }
+  .reports-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .reports-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+  .icon-btn {
+    width: 30px; height: 30px;
+    display: grid; place-items: center;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+  }
+  .icon-btn:hover { background: var(--elev); color: var(--text); }
+  .reports-list { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .reports-list .report-card { background: #dce1e9; }
+  .reports-empty { padding: 34px 16px; text-align: center; font-size: 12.5px; line-height: 1.9; color: var(--faint); white-space: pre-line; }
+
+  .reports-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    background: rgba(0, 0, 0, .38);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .22s ease;
+  }
+  .reports-scrim.show { opacity: 1; pointer-events: auto; }
+
+  /* ---------- 记忆面板 ---------- */
+  .memory {
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    z-index: 20;
+    width: min(400px, 100%);
+    display: flex;
+    flex-direction: column;
+    background: #e2e6ed;
+    border-left: 1px solid var(--border);
+    box-shadow: -20px 0 40px rgba(0, 0, 0, .28);
+    transform: translateX(102%);
+    transition: transform .22s ease;
+  }
+  .memory.open { transform: none; }
+  .memory-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .memory-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+  .memory-list { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .memory-empty { padding: 34px 16px; text-align: center; font-size: 12.5px; line-height: 1.9; color: var(--faint); white-space: pre-line; }
+  .memory-error { padding: 24px 16px; text-align: center; font-size: 12.5px; line-height: 1.9; color: #5f0404; }
+  .memory-error .btn { margin-top: 8px; }
+  .memory-item {
+    padding: 9px 12px;
+    border: 1px solid var(--border-soft);
+    border-radius: 9px;
+    background: #dce1e9;
+  }
+  .memory-item-head { display: flex; align-items: baseline; gap: 8px; }
+  .memory-item-by { font-size: 12px; font-weight: 600; color: #212836; white-space: nowrap; }
+  .memory-item.who-you .memory-item-by { color: #04275f; }
+  .memory-item.who-me .memory-item-by { color: #18754a; }
+  .memory-item.who-daman .memory-item-by { color: #704208; }
+  .memory-item-time { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .memory-item-text {
+    margin-top: 4px;
+    font-size: 13px;
+    line-height: 1.62;
+    color: #272e3b;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .memory-composer {
+    flex: none;
+    padding: 10px 12px 12px;
+    border-top: 1px solid var(--border);
+    background: #e6e9ef;
+  }
+  .memory-box {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 6px 6px 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--elev);
+    transition: border-color .15s ease;
+  }
+  .memory-box:focus-within { border-color: #a7b3c5; }
+  .memory-box textarea {
+    flex: 1;
+    min-width: 0;
+    max-height: 132px;
+    padding: 6px 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    resize: none;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text);
+  }
+  .memory-box textarea::placeholder { color: var(--faint); }
+  .memory-box textarea:disabled { color: var(--faint); }
+  #memorySend { flex: none; padding: 7px 14px; }
+  .memory-hint { margin-top: 6px; min-height: 15px; font-size: 11px; color: var(--faint); }
+  .memory-hint.error { color: #5f0404; }
+
+  /* ---------- 新建房间 ---------- */
+  dialog.dialog {
+    width: min(420px, calc(100vw - 32px));
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #dee3ea;
+    color: var(--text);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, .55);
+  }
+  dialog.dialog::backdrop { background: rgba(5, 7, 10, .64); }
+  .dialog-body { padding: 18px; }
+  .dialog-body h2 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+  .dialog-sub { margin: 0 0 16px; font-size: 12px; line-height: 1.6; color: var(--faint); }
+  .field label { display: block; margin-bottom: 6px; font-size: 12px; color: var(--muted); }
+  .field input {
+    width: 100%;
+    padding: 9px 11px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #e6eaf0;
+    outline: none;
+    font-size: 13.5px;
+    transition: border-color .15s ease;
+  }
+  .field input:focus { border-color: #9eacc2; }
+  .field input::placeholder { color: var(--faint); }
+  .fixed-members { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 12px; font-size: 11.5px; color: var(--faint); }
+  .fixed-members .member { font-size: 11px; padding: 1px 7px; }
+  .form-error { margin-top: 10px; font-size: 12px; color: #5f0404; }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+  /* ---------- 成员管理 ---------- */
+  dialog.dialog { max-height: calc(100vh - 40px); overflow-y: auto; }
+  dialog.dialog.dialog-wide { width: min(560px, calc(100vw - 32px)); }
+  .section-label { margin: 16px 0 8px; font-size: 11.5px; color: var(--faint); letter-spacing: .04em; }
+  .person-list { display: flex; flex-direction: column; gap: 6px; max-height: 248px; overflow-y: auto; padding-right: 2px; }
+  .person-row {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; padding: 8px 10px;
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    background: #e2e6ed;
+    color: inherit;
+    text-align: left;
+  }
+  .person-row:hover { background: #d9dfe8; border-color: #bbc4d3; }
+  .person-row[aria-pressed="true"] { border-color: rgba(107, 164, 255, .5); background: rgba(107, 164, 255, .1); box-shadow: inset 0 0 0 1px rgba(107, 164, 255, .22); }
+  .person-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .person-name { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .person-meta { font-size: 11px; color: var(--faint); }
+  .person-mark {
+    flex: none; width: 16px; height: 16px;
+    display: grid; place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    font-size: 10px; line-height: 1;
+    color: transparent;
+  }
+  .person-row[aria-pressed="true"] .person-mark { color: var(--accent); border-color: var(--accent); }
+  .person-empty { padding: 12px 4px; font-size: 12px; line-height: 1.7; color: var(--faint); text-align: center; }
+  .person-row-static { background: #eceff4; }
+  .person-row-static:hover { background: #eceff4; border-color: var(--border-soft); }
+  .btn-small { padding: 4px 10px; font-size: 12px; flex: none; }
+  .btn-block { width: 100%; }
+  .invite-adv { margin-top: 16px; border-top: 1px solid var(--border-soft); padding-top: 10px; }
+  .invite-adv > summary { cursor: pointer; font-size: 12px; color: var(--faint); padding: 4px 0; }
+  .invite-adv[open] > summary { margin-bottom: 4px; color: var(--text); }
+  .inline-form { display: flex; gap: 6px; align-items: stretch; }
+  .inline-form input {
+    flex: 1; min-width: 0;
+    padding: 7px 9px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #e6eaf0;
+    outline: none;
+    font-size: 13px;
+  }
+  .inline-form select {
+    flex: none;
+    padding: 7px 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #e6eaf0;
+    font-size: 12.5px;
+    outline: none;
+  }
+  .inline-form input:focus, .inline-form select:focus { border-color: #9eacc2; }
+  .inline-form .btn { flex: none; }
+  .result-box { margin-top: 10px; padding: 9px 10px; border: 1px dashed #a5b2cc; border-radius: 8px; background: #e5e9ef; }
+  .result-label { font-size: 11.5px; line-height: 1.6; color: var(--muted); }
+  .copy-row { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+  .copy-row code {
+    flex: 1; min-width: 0;
+    padding: 3px 6px;
+    border: 1px solid var(--border-soft);
+    border-radius: 5px;
+    background: #e8ecf2;
+    font-size: 11.5px;
+    color: #101d36;
+    white-space: nowrap;
+    overflow-x: auto;
+  }
+  .copy-row .btn { flex: none; padding: 4px 9px; font-size: 11.5px; }
+  .kick-row { cursor: default; }
+  .kick-row .btn { flex: none; padding: 4px 10px; font-size: 11.5px; }
+  .switch-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-top: 12px; padding: 9px 11px;
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    background: #e2e6ed;
+  }
+  .switch-row .switch-text { font-size: 12.5px; color: var(--muted); }
+  .switch-row input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; }
+  .field.mt { margin-top: 12px; }
+
+  /* ---------- Toast / 鉴权 ---------- */
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    z-index: 90;
+    max-width: min(80vw, 420px);
+    padding: 8px 14px;
+    border: 1px solid #b1bacc;
+    border-radius: 8px;
+    background: #cfd6e2;
+    color: var(--text);
+    font-size: 12.5px;
+    line-height: 1.5;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 8px);
+    transition: opacity .2s ease, transform .2s ease;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.error { border-color: rgba(255, 123, 123, .42); color: #480303; }
+
+  .auth-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(8, 10, 14, .92);
+  }
+  .auth-card { width: min(360px, 100%); padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: #dee3ea; }
+  .auth-card h2 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
+  .auth-card p { margin: 0 0 14px; font-size: 12.5px; line-height: 1.7; color: var(--muted); }
+  .auth-card code { padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px; background: #e6eaf0; font-size: 11.5px; }
+  .auth-row { display: flex; gap: 8px; }
+  .auth-row input {
+    flex: 1; min-width: 0;
+    padding: 9px 11px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #e6eaf0;
+    outline: none;
+    font-size: 13.5px;
+  }
+  .auth-error { margin-top: 10px; font-size: 12.5px; line-height: 1.6; color: #7a1414; }
+  .auth-error[hidden] { display: none; }
+
+  /* ---------- 响应式 ---------- */
+  @media (max-width: 820px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+    .sidebar { border-right: 0; border-bottom: 1px solid var(--border); min-width: 0; overflow: hidden; }
+    .sidebar-head { padding: 10px 14px 0; }
+    .brand-mark { width: 28px; height: 28px; border-radius: 7px; }
+    .brand-title { font-size: 14px; }
+    .brand-sub { display: none; }
+    .btn-new { padding: 5px 10px; font-size: 12px; }
+
+    .rooms {
+      flex: none;
+      flex-direction: row;
+      align-items: stretch;
+      gap: 8px;
+      min-width: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 8px 14px 10px;
+    }
+    .room-item {
+      flex: 0 0 auto;
+      width: 188px;
+      padding: 7px 10px;
+      background: #dfe3ea;
+      border-color: var(--border-soft);
+    }
+    .room-item.active { background: #cfd6e4; border-color: #a5b3cd; box-shadow: inset 0 0 0 1px rgba(107, 164, 255, .22); }
+    .room-item-meta { margin-top: 2px; }
+    .room-last { display: none; }
+    .rooms-filter {
+      padding: 2px 14px 6px;
+      display: flex;
+      justify-content: flex-start;
+    }
+    .filter-chip {
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--faint);
+      font: inherit;
+      font-size: 11.5px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+    }
+    .filter-chip.is-on {
+      color: var(--accent);
+      border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+    .filter-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .rooms-empty { width: 100%; padding: 8px 4px; text-align: left; }
+    .sidebar-foot { display: none; }
+
+    .room-head { padding: 8px 14px 6px; }
+    /* min-width:0 —— 这一行是 column 容器里的 flex item，默认 min-width:auto 会被
+       里面那排 nowrap 按钮撑到 464px（比屏幕还宽），整行溢出、按钮也就滑不动了。 */
+    .room-title-row { flex-wrap: wrap; row-gap: 6px; min-width: 0; }
+    /* 标题让位给状态 pill：省略号截断，别把 pill 顶到第二行去白占 24px。
+       唤醒额度那个 chip 字太长（「唤醒 me 10/200 · daman 11/200」），手机上收掉，桌面还留着。 */
+    .room-title-row h1 {
+      flex: 1 1 0;
+      min-width: 54px;
+      font-size: 14.5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .room-title-row > .pill { flex: none; }
+    .wake-chip { display: none; }
+    /* 窄屏：这排操作常显，单独占一行、横向滑动，绝不折成两行去挤消息区。
+       按钮全部露在外面（拉人/踢人/规则/报告/记忆/刷新/解散），手指左右划就能看到后面的。 */
+    .head-actions {
+      display: flex;
+      flex: 1 1 100%;
+      width: 100%;
+      order: 3;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overflow-y: hidden;
+      gap: 3px;
+      padding: 2px 0 1px;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
+    }
+    .head-actions::-webkit-scrollbar { display: none; }
+    .head-actions > * { flex: none; }
+    .head-actions .btn { padding: 6px 9px; font-size: 12px; }
+    .conn { margin-right: 0; }
+    .members { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+    .member { flex: none; }
+
+    /* 键盘弹起时让位：列表条整条收起，成员条也收（打字时用不到，留着白占 36px），
+       只留会话和输入区 —— 跟 QQ 打字时的取舍一致。 */
+    body.kb-open .sidebar { display: none; }
+    body.kb-open .members { display: none; }
+
+    .timeline { padding: 12px 14px 18px; }
+    .msg-body { max-width: none; }
+    .composer { padding: 8px 14px calc(10px + env(safe-area-inset-bottom)); }
+    .identity { margin-bottom: 6px; flex-wrap: nowrap; overflow-x: auto; }
+    /* 手机上「回车换行 · 点发送送出」这种提示是白占一行，键盘一弹更是白占半屏消息区 */
+    .composer-hint { display: none; }
+    .reports, .memory { width: 100%; border-left: 0; }
+
+    /* 输入框字号 <16px 时 iOS Safari 会在聚焦瞬间放大整个页面，
+       放大后又得滚动才能看见输入位——这也是「打字时页面跳一下」的成因之一。 */
+    .composer-box textarea,
+    .memory-box textarea,
+    .field input,
+    .field textarea,
+    .auth-card input { font-size: 16px; }
+
+    /* 触控目标：主操作 ≥44px，次要控件 ≥32~38px（W3C / Material 推荐下限）。
+       头部这排按钮高度 36：七个按钮要在一行里塞进 362px 的屏宽，只能收窄内边距；
+       塞不下时靠上面那条 overflow-x 横滑兜底，不会折行。 */
+    #sendBtn, .attach-btn { min-width: 44px; min-height: 44px; padding: 0 14px; }
+    .head-actions .btn { min-height: 36px; padding: 6px 9px; font-size: 12px; }
+    .member { min-height: 34px; padding: 5px 9px; }
+    .room-item { min-height: 56px; }
+    .filter-chip { min-height: 34px; padding: 6px 11px; font-size: 12.5px; }
+    .who-btn { min-height: 32px; padding: 6px 11px; font-size: 12px; }
+    .msg-actions { opacity: 1; }
+
+    /* 刘海 / 灵动岛 / 横屏左右安全区 */
+    .sidebar-head { padding-top: calc(10px + env(safe-area-inset-top)); }
+    .sidebar { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  }
+
+  @media (max-width: 520px) {
+    .conn .conn-label { display: none; }
+    .room-title-row { gap: 7px; }
+    .btn-danger-ghost { padding: 6px 9px; }
+    #reportsBtn, #memoryBtn { padding: 6px 8px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .reports { transition: none; }
+  }
+.room-restore { margin-left: 6px; padding: 1px 8px; border-radius: 999px; border: 1px solid rgba(120,170,255,.45); background: rgba(120,170,255,.12); color: var(--text, #0b0f17); font-size: 11px; cursor: pointer; }
+.room-restore:hover { background: rgba(120,170,255,.24); }
+</style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="brand-text">
+            <div class="brand-title">ds-teams</div>
+            <div class="brand-sub">三人管理员 · 多房间</div>
+          </div>
+          <a class="filter-chip" href="/control" title="任务台账、gate 证据、人审">控制台</a>
+          <button type="button" class="filter-chip" id="onlyOpenBtn" aria-pressed="false" title="查看已解散（归档）的房间">归档</button>
+          <button type="button" class="btn btn-primary btn-new" id="newRoomBtn" hidden>＋ 新建房间</button>
+        </div>
+      </div>
+      <div class="rooms" id="roomList" role="list" aria-label="房间列表"></div>
+      <div class="sidebar-foot" id="sidebarFoot">
+        <span>本地服务</span><span>数据只存本机</span>
+      </div>
+    </aside>
+
+    <main class="detail">
+      <section class="empty" id="emptyState">
+        <div class="empty-mark" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="empty-title" id="emptyTitle">选择一个房间</div>
+        <div class="empty-hint" id="emptyHint">左侧是房间列表。没有房间就新建一个。</div>
+      </section>
+
+      <section class="room" id="roomView" hidden>
+        <header class="room-head">
+          <div class="room-title-row">
+            <h1 id="roomTitle">房间</h1>
+            <span class="pill is-open" id="roomStatus">进行中</span>
+            <span class="pill wake-chip" id="wakeChip" title="" hidden></span>
+            <button type="button" class="pill warn-chip" id="latencyChip" title="评审端延迟告警" aria-pressed="false" hidden></button>
+            <button type="button" class="pill sessions-chip" id="sessionsChip" title="改了 data/room-sessions.json：桥端有 5 秒缓存，倒计时到 0 才算换过来。点一下收起。" hidden></button>
+            <div class="head-actions">
+              <span class="conn" id="conn" aria-live="polite"><i class="dot"></i><span class="conn-label" id="connLabel">未连接</span></span>
+              <button type="button" class="btn btn-ghost" id="inviteBtn" hidden>拉人</button>
+              <button type="button" class="btn btn-ghost" id="kickBtn" hidden>踢人</button>
+              <button type="button" class="btn btn-ghost" id="rulesBtn" hidden>规则</button>
+              <button type="button" class="btn btn-ghost" id="reportsBtn" aria-expanded="false">报告 <span id="reportsCount">0</span></button>
+              <button type="button" class="btn btn-ghost" id="memoryBtn" aria-expanded="false">记忆 <span id="memoryCount">0</span></button>
+              <button type="button" class="btn btn-ghost" id="syncBtn" title="立即同步房间消息">刷新</button>
+              <button type="button" class="btn btn-ghost" id="archiveRoomBtn" hidden title="把这个已解散的房间收进归档（搬出主数据）">归档</button>
+              <button type="button" class="btn btn-danger-ghost" id="closeRoomBtn" hidden>解散</button>
+            </div>
+          </div>
+          <div class="members" id="members"></div>
+          <!-- 权限 v4：小群主发起解散后，超管有 5 秒可以否决（不响应即放行）。 -->
+          <div class="close-request-bar" id="closeRequestBar" hidden>
+            <span class="close-request-text" id="closeRequestText"></span>
+            <button type="button" class="btn btn-danger-ghost" id="closeDenyBtn">否决解散</button>
+            <button type="button" class="btn btn-ghost" id="closeApproveBtn">同意</button>
+          </div>
+        </header>
+
+        <div class="timeline" id="timeline">
+          <div class="timeline-inner" id="timelineInner"></div>
+        </div>
+
+        <footer class="composer" id="composer">
+          <div class="composer-inner">
+            <div class="identity" id="identity" role="group" aria-label="发言身份"></div>
+            <div class="quote-bar" id="quoteBar" hidden>
+              <div class="quote-bar-body">
+                <span class="quote-bar-label">引用</span>
+                <span class="quote-bar-text" id="quoteBarText"></span>
+              </div>
+              <button type="button" class="icon-btn" id="quoteCancel" aria-label="取消引用">×</button>
+            </div>
+            <div class="composer-box">
+              <button type="button" class="btn btn-ghost attach-btn" id="attachBtn" title="图片或文档（≤25MB，不收视频）" aria-label="添加附件">＋</button>
+              <input type="file" id="fileInput" hidden accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,.docx,.xlsx,.pptx,.pdf,.txt,.md,.csv,.json,.zip">
+              <textarea id="input" rows="1" maxlength="8000" placeholder="说点什么…（Enter 发送，Shift+Enter 换行）" aria-label="发言内容"></textarea>
+              <button type="button" class="btn btn-primary" id="sendBtn">发送</button>
+            </div>
+            <div class="composer-hint" id="composerHint">Enter 发送 · Shift+Enter 换行</div>
+          </div>
+        </footer>
+      </section>
+
+      <div class="reports-scrim" id="reportsScrim" aria-hidden="true"></div>
+      <aside class="reports" id="reportsPanel" aria-hidden="true" aria-label="报告汇总">
+        <header class="reports-head">
+          <h2>报告汇总</h2>
+          <button type="button" class="icon-btn" id="reportsClose" aria-label="关闭报告汇总">×</button>
+        </header>
+        <div class="reports-list" id="reportsList"></div>
+      </aside>
+
+      <div class="reports-scrim" id="memoryScrim" aria-hidden="true"></div>
+      <aside class="memory" id="memoryPanel" aria-hidden="true" aria-label="房间记忆">
+        <header class="memory-head">
+          <h2>房间记忆</h2>
+          <button type="button" class="icon-btn" id="memoryClose" aria-label="关闭记忆面板">×</button>
+        </header>
+        <div class="memory-list" id="memoryList"></div>
+        <footer class="memory-composer">
+          <div class="memory-box">
+            <textarea id="memoryInput" rows="2" maxlength="2000" placeholder="记一条…（Enter 发送，Shift+Enter 换行）" aria-label="记忆内容"></textarea>
+            <button type="button" class="btn btn-primary" id="memorySend">记下</button>
+          </div>
+          <div class="memory-hint" id="memoryHint">≤2000 字 · 只给这个房间看</div>
+        </footer>
+      </aside>
+    </main>
+  </div>
+
+  <dialog class="dialog" id="newRoomDialog">
+    <form class="dialog-body" id="newRoomForm" novalidate>
+      <h2>新建房间</h2>
+      <p class="dialog-sub">起一个能看懂的任务名。成员固定为三人，创建后即可发言。</p>
+      <div class="field">
+        <label for="roomTitleInput">房间标题</label>
+        <input id="roomTitleInput" maxlength="120" placeholder="例如：整理本周项目报告" autocomplete="off">
+      </div>
+      <div class="fixed-members">
+        <span>成员</span>
+        <span class="member who-you"><i class="dot"></i>你</span>
+        <span class="member who-me"><i class="dot"></i>小满</span>
+        <span class="member who-daman"><i class="dot"></i>大满</span>
+      </div>
+      <div class="form-error" id="newRoomError" hidden></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="newRoomCancel">取消</button>
+        <button type="submit" class="btn btn-primary" id="newRoomSubmit">创建</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="dialog dialog-wide" id="inviteDialog">
+    <div class="dialog-body">
+      <h2>邀请进房间</h2>
+      <p class="dialog-sub">生成一条一次性链接发给对方。谁点开、输什么名字，就以什么名字进来——不认设备也不认账号。链接用完即废；人主动退出后链接空出来，同名的人可以继承座位；被移出的人链接直接作废，名字进黑名单。</p>
+      <button type="button" class="btn btn-primary btn-block" id="genInviteBtn">生成邀请链接</button>
+      <div class="result-box" id="inviteLinkResult" hidden></div>
+      <div class="section-label">这间房的邀请链接</div>
+      <div class="person-list" id="inviteTokenList"></div>
+      <div class="form-error" id="inviteError" hidden></div>
+      <details class="invite-adv">
+        <summary>高级：把已有身份直接拉进来 / 开通新身份</summary>
+        <div class="section-label">可直接拉入的身份</div>
+        <div class="person-list" id="inviteList"></div>
+        <div class="section-label">开通新身份</div>
+        <div class="inline-form">
+          <input id="newPersonName" maxlength="40" placeholder="姓名，例如：测试员" autocomplete="off">
+          <select id="newPersonKind" aria-label="身份类型">
+            <option value="human">真人</option>
+            <option value="agent">agent</option>
+          </select>
+          <button type="button" class="btn" id="createPersonBtn">开通</button>
+        </div>
+        <div class="result-box" id="newPersonResult" hidden></div>
+      </details>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="inviteClose">关闭</button>
+        <button type="button" class="btn btn-primary" id="inviteSubmit" disabled>拉入</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="dialog dialog-wide" id="kickDialog">
+    <div class="dialog-body">
+      <h2>移出成员</h2>
+      <p class="dialog-sub">移出后，对方不能再在这个房间发言；历史消息保留。</p>
+      <div class="person-list" id="kickList"></div>
+      <div class="form-error" id="kickError" hidden></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="kickClose">关闭</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="dialog" id="memberDialog">
+    <div class="dialog-body">
+      <h2 id="memberTitle">成员</h2>
+      <p class="dialog-sub" id="memberSub">身份决定他在这间房里能做什么。</p>
+      <div class="form-error" id="memberError" hidden></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="memberRoleBtn" hidden>设为管理员</button>
+        <button type="button" class="btn btn-ghost" id="memberTransferBtn" hidden>转让小群主</button>
+        <button type="button" class="btn btn-ghost" id="memberClose">关闭</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="dialog" id="rulesDialog">
+    <div class="dialog-body">
+      <h2>房间规则</h2>
+      <p class="dialog-sub">静默巡检到点后会提醒未完成任务；规则改动立即生效。</p>
+      <div class="field">
+        <label for="rulesQuiet">静默提醒（秒）</label>
+        <input id="rulesQuiet" type="number" min="0" step="1" value="180" inputmode="numeric">
+      </div>
+      <div class="switch-row">
+        <span class="switch-text">发送任务需要成员确认（ackRequired）</span>
+        <input id="rulesAck" type="checkbox" aria-label="需要确认">
+      </div>
+      <div class="field mt">
+        <label for="rulesNote">备注</label>
+        <input id="rulesNote" maxlength="500" placeholder="给成员看的说明（可留空）" autocomplete="off">
+      </div>
+      <div class="form-error" id="rulesError" hidden></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="rulesCancel">取消</button>
+        <button type="button" class="btn btn-primary" id="rulesSave">保存</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="auth-overlay" id="authOverlay" hidden>
+    <form class="auth-card" id="authForm">
+      <h2>需要访问钥匙</h2>
+      <p>在地址后面加上 <code>?k=...</code>，或在下面输入钥匙。</p>
+      <div class="auth-row">
+        <input id="authKey" autocomplete="off" placeholder="访问钥匙" aria-label="访问钥匙">
+        <button type="submit" class="btn btn-primary">进入</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- 登录/注册：浏览器身份的唯一来源（2026-11-05 起页面不再持有成员 key） -->
+  <div class="auth-overlay" id="loginOverlay" hidden>
+    <form class="auth-card" id="loginForm">
+      <h2 id="loginTitle">登录</h2>
+      <p id="loginHint">用你的昵称和密码进入。</p>
+      <div class="auth-row" id="loginNameRow">
+        <input id="loginName" autocomplete="username" placeholder="昵称，例如 林青峰" aria-label="昵称">
+      </div>
+      <div class="auth-row" id="loginCodeRow" hidden>
+        <input id="loginCode" autocomplete="off" placeholder="初始注册码（服务器 data/setup-code.txt）" aria-label="初始注册码">
+      </div>
+      <div class="auth-row" style="margin-top:8px">
+        <input id="loginPassword" type="password" autocomplete="current-password" placeholder="密码" aria-label="密码">
+      </div>
+      <div class="auth-error" id="loginError" hidden></div>
+      <div style="margin-top:12px">
+        <button type="submit" class="btn btn-primary btn-block" id="loginSubmit">进入</button>
+      </div>
+    </form>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  const PEOPLE = {
+    you: { name: '林青峰', short: '你', role: '群主', label: '你' },
+    me: { name: '小满', short: '小', role: '管理员 · QQ 端', label: '小满' },
+    daman: { name: '大满', short: '大', role: '管理员 · 桌面端', label: '大满' },
+  };
+  const WHO_ORDER = ['you', 'me', 'daman'];
+  const KIND_LABEL = { text: '消息', progress: '进度', report: '报告', review: '互评', system: '系统', file: '文件' };
+  const STATUS_TEXT = {
+    done: '已完成', ok: '已完成', completed: '已完成', complete: '已完成',
+    partial: '部分完成', running: '进行中', doing: '进行中', wip: '进行中', progress: '进行中',
+    blocked: '受阻', failed: '失败', fail: '失败', error: '失败',
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    roomList: $('roomList'),
+    sidebarFoot: $('sidebarFoot'),
+    emptyState: $('emptyState'),
+    emptyTitle: $('emptyTitle'),
+    emptyHint: $('emptyHint'),
+    roomView: $('roomView'),
+    roomTitle: $('roomTitle'),
+    roomStatus: $('roomStatus'),
+    wakeChip: $('wakeChip'),
+    onlyOpenBtn: $('onlyOpenBtn'),
+    latencyChip: $('latencyChip'),
+    sessionsChip: $('sessionsChip'),
+    members: $('members'),
+    conn: $('conn'),
+    connLabel: $('connLabel'),
+    reportsBtn: $('reportsBtn'),
+    reportsCount: $('reportsCount'),
+    closeRoomBtn: $('closeRoomBtn'),
+    closeRequestBar: $('closeRequestBar'),
+    closeRequestText: $('closeRequestText'),
+    closeDenyBtn: $('closeDenyBtn'),
+    closeApproveBtn: $('closeApproveBtn'),
+    inviteBtn: $('inviteBtn'),
+    kickBtn: $('kickBtn'),
+    rulesBtn: $('rulesBtn'),
+    inviteDialog: $('inviteDialog'),
+    inviteList: $('inviteList'),
+    inviteError: $('inviteError'),
+    inviteSubmit: $('inviteSubmit'),
+    inviteClose: $('inviteClose'),
+    inviteLinkResult: $('inviteLinkResult'),
+    genInviteBtn: $('genInviteBtn'),
+    inviteTokenList: $('inviteTokenList'),
+    newPersonName: $('newPersonName'),
+    newPersonKind: $('newPersonKind'),
+    createPersonBtn: $('createPersonBtn'),
+    newPersonResult: $('newPersonResult'),
+    kickDialog: $('kickDialog'),
+    kickList: $('kickList'),
+    kickError: $('kickError'),
+    kickClose: $('kickClose'),
+    memberDialog: $('memberDialog'),
+    memberTitle: $('memberTitle'),
+    memberSub: $('memberSub'),
+    memberError: $('memberError'),
+    memberRoleBtn: $('memberRoleBtn'),
+    memberTransferBtn: $('memberTransferBtn'),
+    memberClose: $('memberClose'),
+    rulesDialog: $('rulesDialog'),
+    rulesQuiet: $('rulesQuiet'),
+    rulesAck: $('rulesAck'),
+    rulesNote: $('rulesNote'),
+    rulesError: $('rulesError'),
+    rulesSave: $('rulesSave'),
+    rulesCancel: $('rulesCancel'),
+    archiveRoomBtn: $('archiveRoomBtn'),
+    syncBtn: $('syncBtn'),
+    timeline: $('timeline'),
+    timelineInner: $('timelineInner'),
+    composer: $('composer'),
+    identity: $('identity'),
+    input: $('input'),
+    sendBtn: $('sendBtn'),
+    composerHint: $('composerHint'),
+    quoteBar: $('quoteBar'),
+    quoteBarText: $('quoteBarText'),
+    quoteCancel: $('quoteCancel'),
+    reportsPanel: $('reportsPanel'),
+    reportsList: $('reportsList'),
+    reportsScrim: $('reportsScrim'),
+    reportsClose: $('reportsClose'),
+    memoryBtn: $('memoryBtn'),
+    memoryCount: $('memoryCount'),
+    memoryPanel: $('memoryPanel'),
+    memoryList: $('memoryList'),
+    memoryScrim: $('memoryScrim'),
+    memoryClose: $('memoryClose'),
+    memoryInput: $('memoryInput'),
+    memorySend: $('memorySend'),
+    memoryHint: $('memoryHint'),
+    newRoomBtn: $('newRoomBtn'),
+    newRoomDialog: $('newRoomDialog'),
+    newRoomForm: $('newRoomForm'),
+    roomTitleInput: $('roomTitleInput'),
+    newRoomError: $('newRoomError'),
+    newRoomSubmit: $('newRoomSubmit'),
+    newRoomCancel: $('newRoomCancel'),
+    toast: $('toast'),
+    authOverlay: $('authOverlay'),
+    authForm: $('authForm'),
+    authKey: $('authKey'),
+    loginOverlay: $('loginOverlay'),
+    loginForm: $('loginForm'),
+    loginTitle: $('loginTitle'),
+    loginHint: $('loginHint'),
+    loginNameRow: $('loginNameRow'),
+    loginName: $('loginName'),
+    loginCodeRow: $('loginCodeRow'),
+    loginCode: $('loginCode'),
+    loginPassword: $('loginPassword'),
+    loginError: $('loginError'),
+    loginSubmit: $('loginSubmit'),
+    attachBtn: $('attachBtn'),
+    fileInput: $('fileInput'),
+  };
+
+  const savedWho = localStorage.getItem('ds-teams:who');
+  const debugOn = () => { try { return localStorage.getItem('ds-teams:debug') === '1'; } catch { return false; } };
+  const state = {
+    rooms: [],
+    archiveRooms: [],
+    currentId: null,
+    detail: null,
+    seqs: new Set(),
+    sse: null,
+    retry: 0,
+    reconnectTimer: null,
+    // 切后台后延时断开 SSE 的定时器：立刻断开会让「切出去看一眼再回来」白重连一次
+    hideTimer: null,
+    // 身份完全由服务端会话决定（登录后从 /api/auth/whoami 拿），前端不再存「我是谁」。
+    // 2026-11-05：以前这里读 localStorage 再回落 'you'，加上 /api/member 发 key，
+    // 结果任何点开隧道链接的人都是群主。现在 who 为空就是不认识，走登录页。
+    who: '',
+    isSuper: false,
+    debug: debugOn(),
+    archiveView: localStorage.getItem('ds-teams:archiveView') === '1',
+    sending: false,
+    reportsOpen: false,
+    memoryOpen: false,
+    memoryEntries: [],
+    memoryCount: 0,
+    memoryLoading: false,
+    memorySending: false,
+    memoryError: '',
+    refreshTimer: null,
+    selectToken: 0,
+    toastTimer: null,
+    authShown: false,
+    loginMode: 'login',
+    quote: null,
+    latency: { on: true, threshold: 120000 },
+    // 权限 v4：这个人在当前房间的真实身份与能力，一律由服务端 /api/me 给。
+    // 前端自己算 `who === 'you'` 正是上一轮「我明明能解散，按钮却被藏了」的根因。
+    me: null,
+    meTimer: null,
+  };
+
+  let timelineEmpty = null;
+  let invitePeople = [];
+  let inviteSelectedId = '';
+  let inviteBusy = false;
+
+  /* ---------- 基础工具 ---------- */
+
+  function el(tag, cls, text) {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined && text !== null) node.textContent = String(text);
+    return node;
+  }
+
+  function keyParam() {
+    try { return new URLSearchParams(location.search).get('k') || ''; }
+    catch { return ''; }
+  }
+
+  function withKey(path) {
+    const key = keyParam();
+    if (!key) return path;
+    return path + (path.includes('?') ? '&' : '?') + 'k=' + encodeURIComponent(key);
+  }
+
+  async function api(path, options) {
+    const opts = Object.assign({ credentials: 'same-origin' }, options || {});
+    if (opts.body && !opts.headers) opts.headers = { 'content-type': 'application/json' };
+    // 身份靠 HttpOnly 会话 cookie（同源自动带上），页面里不再有成员 key，也不往 body 里塞 key。
+    let res;
+    try {
+      // 15 秒超时：请求挂起时不能让 state.sending 永久卡住
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 15000);
+      res = await fetch(withKey(path), Object.assign({}, opts, { signal: ctl.signal })).finally(() => clearTimeout(timer));
+    } catch {
+      throw new Error('服务未连接');
+    }
+    if (res.status === 401) {
+      showAuth();
+      throw new Error('需要访问钥匙');
+    }
+    let data = {};
+    try { data = await res.json(); } catch {}
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    return data;
+  }
+
+  // 消息/成员的颜色类：you/me/daman 三色，其他（受邀成员 h-xxxx）统一 guest。
+  function whoClass(id, fallback) {
+    const key = String(id || '');
+    if (WHO_ORDER.includes(key)) return key;
+    return fallback !== undefined ? fallback : 'guest';
+  }
+
+  function nameOf(who) {
+    const id = String(who || '');
+    if (id === 'system') return '系统';
+    if (PEOPLE[id] && PEOPLE[id].name) return PEOPLE[id].name;
+    const m = currentMembers().find((x) => x && x.id === id && x.name);
+    if (m) return m.name;
+    // 不给人看哈希：认不出来的受邀者统一叫「群成员」。
+    // 以前这里回退成 id，界面上就会出现 h-9f3a12c4 这种「随机字母」。
+    return /^h-/.test(id) ? '群成员' : (id || '未知');
+  }
+
+  // 一个人的显示信息（名字 + 头像字）。PEOPLE 里只有写死的三个人，
+  // 受邀进来的人是 h-xxxx 这种 id：以前消息渲染直接取 PEOPLE[who].short，
+  // 于是「Cannot read properties of undefined (reading 'short')」，整条消息渲染不出来，
+  // 看起来就是新人发不了言。这里兜住：先查房间成员表里的真名，查不到再退回 id。
+  function personOf(id) {
+    const key = whoClass(id);
+    if (PEOPLE[key]) return PEOPLE[key];
+    const known = currentMembers().find((m) => m && m.id === id);
+    const name = (known && known.name) || nameOf(id);
+    return { name, short: (String(name).trim().slice(0, 1) || '?'), guest: true };
+  }
+
+  function fmtTime(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) return hm;
+    if (d.getFullYear() === now.getFullYear()) return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + hm;
+    return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + hm;
+  }
+
+  function fmtFull(iso) {
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleString('zh-CN', { hour12: false });
+  }
+
+  function safeHref(raw) {
+    try {
+      const url = new URL(String(raw), location.href);
+      if (url.protocol === 'http:' || url.protocol === 'https:') return url.href;
+    } catch {}
+    return null;
+  }
+
+  function statusText(status) {
+    const key = String(status || 'done').toLowerCase();
+    if (STATUS_TEXT[key]) return STATUS_TEXT[key];
+    return status ? String(status) : '已完成';
+  }
+
+  function badgeClass(status) {
+    const key = String(status || 'done').toLowerCase();
+    if (['done', 'ok', 'completed', 'complete', '完成', '已完成'].includes(key)) return 'good';
+    if (['partial', 'running', 'doing', 'wip', 'progress', '进行中', '部分完成'].includes(key)) return 'warn';
+    if (['blocked', 'failed', 'fail', 'error', '受阻', '失败'].includes(key)) return 'bad';
+    return 'neutral';
+  }
+
+  function isNearBottom() {
+    return els.timeline.scrollHeight - els.timeline.scrollTop - els.timeline.clientHeight < 120;
+  }
+
+  function scrollToBottom(smooth) {
+    requestAnimationFrame(() => {
+      els.timeline.scrollTo({ top: els.timeline.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    });
+  }
+
+  /* ---------- 移动端可视区（软键盘） ----------
+   * iOS 弹键盘时布局视口不变，只有 visualViewport 变矮。不跟着缩，底部输入区就被键盘
+   * 盖住，最新的消息也一起看不见；Safari 为了露出输入框还会把整页顶一下再弹回（回弹）。
+   * 做法：把 visualViewport.height 写进 --app-height（.app 的 height 用它），
+   * 键盘开合时如果焦点在输入框且原本就贴着底，就把时间线重新贴到底。
+   * 另外：只要 --app-height 变（键盘开合、输入框换行变高、引用条出现），
+   * 就把「谁原本贴着底」重新贴底一次，和 QQ 一样输入区动多少、会话就动多少。 */
+  let pinBottom = false;
+
+  function initViewport() {
+    const vv = window.visualViewport;
+    const root = document.documentElement;
+    let raf = 0;
+    let lastHeight = -1;
+
+    const apply = () => {
+      raf = 0;
+      const layout = Math.round(window.innerHeight);
+      if (!vv) { root.style.setProperty('--app-height', layout + 'px'); return; }
+      // 可见区 = visualViewport 的高度 + 它在布局视口里的偏移（Safari 顶页时 offsetTop > 0）
+      const visible = Math.round(vv.height + (vv.offsetTop || 0));
+      // 只有「少了 80px 以上」才认定键盘在占位。工具条伸缩、地址栏隐藏都只有几十像素，
+      // 跟着缩会让页面一抖一抖的。
+      // 双指放大（scale 明显不等于 1）时 vv.height 也会变矮，但那是「看局部」不是键盘，
+      // 这时不缩，否则整个布局被压扁。
+      const zoomed = vv.scale && Math.abs(vv.scale - 1) > 0.01;
+      const kb = layout - visible;
+      const height = (!zoomed && kb > 80) ? visible : layout;
+      // 手机键盘顶出来时把房间列表条收走——QQ 也是这么干的，
+      // 不然 540 的屏被列表条 + 头部吃掉一半，只剩两三条消息能看。
+      document.body.classList.toggle('kb-open', !zoomed && kb > 80);
+      if (height === lastHeight) return;
+      lastHeight = height;
+      root.style.setProperty('--app-height', height + 'px');
+      // 键盘动了（开或合）：贴底的人继续看最新消息，翻旧记录的人不打断
+      if (pinBottom) scrollToBottom(false);
+    };
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(apply); };
+
+    if (vv) {
+      vv.addEventListener('resize', schedule);
+      vv.addEventListener('scroll', () => {
+        // Safari 会把布局视口顶起来（offsetTop > 0），顶回去，等于消掉回弹
+        if (vv.offsetTop) window.scrollTo(0, 0);
+        schedule();
+      });
+    }
+    window.addEventListener('resize', schedule);
+    // 转屏 / 从后台回来（含 bfcache 恢复）尺寸可能整个变掉，重算一次
+    window.addEventListener('orientationchange', () => setTimeout(apply, 300));
+    window.addEventListener('pageshow', () => { apply(); });
+
+    // 输入区自身变高变矮（换行、引用条、身份条）：贴底的人跟着贴底，
+    // 否则打字打出第二行就把最新消息挤出视野了。
+    const followComposer = () => { if (pinBottom) scrollToBottom(false); };
+    if ('ResizeObserver' in window) new ResizeObserver(followComposer).observe(els.composer);
+    if (els.input) {
+      els.input.addEventListener('focus', () => {
+        pinBottom = isNearBottom();
+        // 键盘动画约 250~350ms，等它落定再把最后一条推上来
+        setTimeout(() => { if (pinBottom) scrollToBottom(false); }, 320);
+      });
+      els.input.addEventListener('blur', () => { pinBottom = false; });
+    }
+    apply();
+  }
+
+  function toast(message, isError) {
+    els.toast.textContent = message;
+    els.toast.classList.toggle('error', !!isError);
+    els.toast.classList.add('show');
+    clearTimeout(state.toastTimer);
+    state.toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2600);
+  }
+
+  /* ---------- 热加载：服务端改了 ui.html 会推 reload（2026-11-05） ----------
+   * 单独开一条常驻 SSE（room=none），不跟着选中的房间走：
+   * 没进房间、正在登录卡片上也能收到。正在打字或有对话框开着就先别刷，只提示。 */
+  function hotBusy() {
+    const box = document.getElementById('input');
+    if (box && box.value.trim()) return true;
+    if (document.querySelector('dialog[open]')) return true;
+    return false;
+  }
+
+  function watchHot() {
+    let es;
+    try {
+      es = new EventSource(withKey('/events?room=none&hot=1'));
+    } catch {
+      return;
+    }
+    es.addEventListener('reload', (event) => {
+      let info = {};
+      try { info = JSON.parse(event.data || '{}'); } catch {}
+      const what = info.file || '界面';
+      if (hotBusy()) {
+        toast(`${what} 已更新，点「刷新」生效`);
+        return;
+      }
+      location.reload();
+    });
+  }
+
+  function setFormError(node, message) {    node.textContent = message || '';
+    node.hidden = !message;
+  }
+
+  function renderCopyBox(container, label, value) {
+    container.textContent = '';
+    container.hidden = false;
+    container.appendChild(el('div', 'result-label', label));
+    const row = el('div', 'copy-row');
+    const code = el('code', null, value);
+    code.title = value;
+    const copy = el('button', 'btn btn-ghost', '复制');
+    copy.type = 'button';
+    copy.addEventListener('click', () => copyText(value));
+    row.appendChild(code);
+    row.appendChild(copy);
+    container.appendChild(row);
+  }
+
+  async function copyText(text) {
+    if (!text) return;
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {}
+    if (!ok) {
+      const ta = el('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      ta.style.top = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { ok = document.execCommand('copy'); } catch {}
+      ta.remove();
+    }
+    toast(ok ? '已复制' : '复制失败，请手动选中复制', !ok);
+  }
+
+  // 邀请链接带 ?join&code；启动时消费掉参数，但保留 k，避免刷新时重复入场
+  function takeJoinParams() {
+    let params;
+    try { params = new URLSearchParams(location.search); } catch { return null; }
+    const roomId = params.get('join');
+    const code = params.get('code');
+    if (!roomId || !code) return null;
+    params.delete('join');
+    params.delete('code');
+    const query = params.toString();
+    try {
+      history.replaceState(null, '', location.pathname + (query ? '?' + query : '') + location.hash);
+    } catch {}
+    return { roomId, code };
+  }
+
+  function showAuth() {
+    if (state.authShown) return;
+    state.authShown = true;
+    els.authOverlay.hidden = false;
+    setTimeout(() => els.authKey.focus(), 30);
+  }
+
+  /* ---------- 登录 / 注册（浏览器身份的唯一入口） ---------- */
+
+  // mode: 'login' | 'register'。register 只在超管还没设密码时出现。
+  function showLogin(mode) {
+    state.loginMode = mode === 'register' ? 'register' : 'login';
+    els.loginOverlay.hidden = false;
+    const reg = state.loginMode === 'register';
+    els.loginTitle.textContent = reg ? '注册超级群主' : '登录';
+    els.loginHint.textContent = reg
+      ? '这是第一次启动。初始注册码在服务器那台机器的 data/setup-code.txt 里（启动日志也打印过）。注册完这个码就作废。'
+      : '用你的昵称和密码进入。';
+    els.loginNameRow.hidden = false;
+    els.loginCodeRow.hidden = !reg;
+    els.loginName.value = state.who || '';
+    els.loginPassword.value = '';
+    els.loginError.hidden = true;
+    els.loginError.textContent = '';
+    els.loginSubmit.textContent = reg ? '注册并进入' : '进入';
+    setTimeout(() => (reg ? els.loginCode : els.loginName).focus(), 30);
+  }
+
+  function showLoginError(message) {
+    els.loginError.hidden = false;
+    els.loginError.textContent = message || '登录失败';
+  }
+
+  async function submitLogin(event) {
+    if (event) event.preventDefault();
+    const reg = state.loginMode === 'register';
+    const name = els.loginName.value.trim();
+    const password = els.loginPassword.value;
+    if (reg && !name) return showLoginError('给自己起个名字');
+    if (!reg && !name) return showLoginError('填昵称');
+    if (!password) return showLoginError('填密码');
+    els.loginSubmit.disabled = true;
+    const old = els.loginSubmit.textContent;
+    els.loginSubmit.textContent = reg ? '注册中…' : '登录中…';
+    try {
+      const body = reg
+        ? { name, password, setupCode: els.loginCode.value.trim() }
+        : { name, password };
+      // 不用 api()：它把 401 一律当成「平台访问钥匙不对」，会把「密码不对」显示成「需要访问钥匙」。
+      const res = await fetch(withKey(reg ? '/api/auth/register' : '/api/auth/login'), {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      let data = {};
+      try { data = await res.json(); } catch {}
+      if (!res.ok || data.ok === false) {
+        throw new Error(data && data.error ? data.error : 'HTTP ' + res.status);
+      }
+      // 会话已经在 HttpOnly cookie 里，刷新一次让整页按新身份重建。
+      location.reload();
+    } catch (error) {
+      showLoginError(error.message || String(error));
+      els.loginSubmit.disabled = false;
+      els.loginSubmit.textContent = old;
+    }
+  }
+
+  /* ---------- 房间列表 ---------- */
+
+  async function loadRooms() {
+    const data = await api('/api/rooms');
+    state.rooms = Array.isArray(data.rooms) ? data.rooms : [];
+    renderRooms();
+  }
+
+  async function loadArchive() {
+    try {
+      const data = await api('/api/archive');
+      state.archiveRooms = Array.isArray(data.rooms) ? data.rooms : [];
+    } catch {
+      state.archiveRooms = [];
+    }
+    renderRooms();
+  }
+
+  let roomsSignature = '';
+
+  function renderRooms() {
+    const closedCount = state.rooms.filter((room) => room.status !== 'open').length;
+    // archiveView=false：只看进行中（外加当前正在看的这间，免得刚解散就从列表消失）；true：只看真归档（已搬出 rooms.json 的）
+    const visible = state.archiveView
+      ? state.archiveRooms
+      : state.rooms.filter((room) => room.status === 'open' || room.id === state.currentId);
+    els.onlyOpenBtn.textContent = state.archiveView ? '返回进行中' : (closedCount ? `归档 ${closedCount}` : '归档');
+    els.onlyOpenBtn.classList.toggle('is-on', state.archiveView);
+    els.onlyOpenBtn.setAttribute('aria-pressed', String(state.archiveView));
+    // 6 秒刷新会重跑这里；数据没变就别重建 DOM（否则键盘焦点每 6 秒被清一次）
+    const signature = (state.currentId || '') + '|' + (state.archiveView ? 'arch' : 'open') + '|' + visible.map((room) => [
+      room.id, room.status, room.messageCount || 0, room.reportCount || 0,
+      room.memberCount || 0, room.pendingCloseAt || '',
+      room.last ? [room.last.who, room.last.kind, room.last.text].join('~') : '',
+    ].join('~')).join('|');
+    if (signature === roomsSignature) return;
+    const focusId = els.roomList.contains(document.activeElement) ? document.activeElement.dataset.id : null;
+    roomsSignature = signature;
+    els.roomList.textContent = '';
+    if (!state.rooms.length) {
+      const empty = el('div', 'rooms-empty', '还没有房间。\n点上方「新建房间」开始。');
+      empty.style.whiteSpace = 'pre-line';
+      els.roomList.appendChild(empty);
+      updateFoot();
+      return;
+    }
+    if (!visible.length) {
+      const empty = el('div', 'rooms-empty', state.archiveView ? '归档里还没有房间。\n解散的房间会留在这里。' : '没有进行中的房间。');
+      empty.style.whiteSpace = 'pre-line';
+      els.roomList.appendChild(empty);
+      updateFoot();
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    for (const room of visible) {
+      const item = el('button', 'room-item' + (room.id === state.currentId ? ' active' : ''));
+      item.type = 'button';
+      item.dataset.id = room.id;
+      item.setAttribute('role', 'listitem');
+
+      const top = el('span', 'room-item-top');
+      top.appendChild(el('span', 'room-item-title', room.title || '未命名任务'));
+      const st = room.status === 'open' ? '进行中' : (room.status === 'archived' ? '已归档' : '已解散');
+      const pending = room.pendingCloseAt && room.status === 'open';
+      top.appendChild(el('span', 'pill ' + (pending ? 'is-pending' : (room.status === 'open' ? 'is-open' : 'is-closed')), pending ? '待确认解散' : st));
+      item.appendChild(top);
+
+      const meta = el('span', 'room-item-meta');
+      if (typeof room.memberCount === 'number') {
+        meta.appendChild(el('span', null, room.memberCount + ' 人'));
+        meta.appendChild(el('span', 'meta-dot', '·'));
+      }
+      meta.appendChild(el('span', null, (room.messageCount || 0) + ' 条'));
+      if (room.reportCount > 0) {
+        meta.appendChild(el('span', 'meta-dot', '·'));
+        meta.appendChild(el('span', null, '报告 ' + room.reportCount));
+      }
+      item.appendChild(meta);
+
+      if (room.last) {
+        const last = el('span', 'room-last');
+        if (room.last.kind && room.last.kind !== 'text') {
+          last.appendChild(el('span', 'last-kind', KIND_LABEL[room.last.kind] || ''));
+        }
+        if (room.last.who !== 'system') {
+          last.appendChild(el('span', 'last-who', (room.last.whoName || nameOf(room.last.who)) + '：'));
+        }
+        last.appendChild(document.createTextNode(room.last.text || ''));
+        item.appendChild(last);
+      } else {
+        item.appendChild(el('span', 'room-last room-last-empty', '暂无消息'));
+      }
+
+      if (room.status === 'archived') {
+        const restore = el('span', 'room-restore', '还原');
+        restore.setAttribute('role', 'button');
+        restore.tabIndex = 0;
+        restore.title = '把这个房间从归档拿回来（变回已解散状态）';
+        restore.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          restore.textContent = '还原中';
+          try {
+            await api('/api/archive/' + encodeURIComponent(room.id) + '/restore', { method: 'POST', body: JSON.stringify({ who: 'you' }) });
+            toast('已还原：' + (room.title || room.id));
+            await loadArchive();
+            await loadRooms();
+          } catch (error) {
+            toast('还原失败：' + error.message, true);
+            restore.textContent = '还原';
+          }
+        });
+        restore.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); restore.click(); } });
+        meta.appendChild(restore);
+      }
+
+      item.addEventListener('click', () => selectRoom(room.id));
+      frag.appendChild(item);
+    }
+    els.roomList.appendChild(frag);
+    if (focusId) {
+      const again = els.roomList.querySelector('.room-item[data-id="' + focusId + '"]');
+      if (again) again.focus({ preventScroll: true });
+    }
+    updateFoot();
+  }
+
+  function updateFoot() {
+    els.sidebarFoot.textContent = '';
+    const open = state.rooms.filter((r) => r.status === 'open').length;
+    els.sidebarFoot.appendChild(el('span', null, open + ' 个进行中'));
+    els.sidebarFoot.appendChild(el('span', null, '共 ' + state.rooms.length + ' 个'));
+  }
+
+  /* ---------- 房间详情 ---------- */
+
+  function showEmpty(title, hint) {
+    els.emptyTitle.textContent = title;
+    els.emptyHint.textContent = hint || '';
+    els.emptyState.hidden = false;
+    els.roomView.hidden = true;
+    setReportsOpen(false);
+    setMemoryOpen(false);
+    document.title = 'ds-teams · 三人房间';
+  }
+
+  async function selectRoom(id, options) {
+    const force = !!(options && options.force);
+    if (!id) {
+      state.currentId = null;
+      state.detail = null;
+      showEmpty('选择一个房间', '左侧是房间列表。没有房间就新建一个。');
+      return;
+    }
+    if (id === state.currentId && state.detail && !force) return;
+
+    const token = ++state.selectToken;
+    state.currentId = id;
+    state.seqs = new Set();
+    localStorage.setItem('ds-teams:room', id);
+    closeSSE();
+    renderRooms();
+    if (!force) {
+      state.detail = null;
+      showEmpty('加载中…', '正在读取房间。');
+    }
+
+    try {
+      const isArchived = state.archiveRooms.some((r) => r.id === id);
+      const data = await api(isArchived ? '/api/archive/' + encodeURIComponent(id) : '/api/rooms/' + encodeURIComponent(id));
+      if (token !== state.selectToken) return;
+
+      state.detail = {
+        room: data.room,
+        members: Array.isArray(data.members) ? data.members : [],
+        messages: (data.messages || []).slice().sort((a, b) => a.seq - b.seq),
+        reports: Array.isArray(data.reports) ? data.reports : [],
+        progress: Array.isArray(data.progress) ? data.progress : [],
+        reviews: Array.isArray(data.reviews) ? data.reviews : [],
+      };
+      state.seqs = new Set(state.detail.messages.map((m) => m.seq));
+      clearQuote();
+
+      // 先问清「我在这个房间是什么身份」，再画头部——按钮归属全靠它。
+      await refreshMe();
+      if (token !== state.selectToken) return;
+
+      els.emptyState.hidden = true;
+      els.roomView.hidden = false;
+      document.title = state.detail.room.title + ' · ds-teams';
+
+      renderHeader();
+      renderTimeline();
+      updateReportCount();
+      if (state.reportsOpen) renderReports();
+      // 换房间就重置记忆面板数据：开着的话重新拉，关着的话把计数清零避免串房
+      state.memoryEntries = [];
+      state.memoryCount = 0;
+      state.memoryError = '';
+      updateMemoryCount();
+      if (state.memoryOpen) loadMemory();
+      updateComposer();
+      scrollToBottom(false);
+      if (state.detail.room.status !== 'archived') connectSSE();
+    } catch (error) {
+      if (token !== state.selectToken) return;
+      state.detail = null;
+      showEmpty('房间打不开', error.message || '请刷新后重试。');
+      toast('加载失败：' + error.message, true);
+    }
+  }
+
+  function currentMembers() {
+    if (!state.detail) return [];
+    const list = state.detail.members && state.detail.members.length
+      ? state.detail.members
+      : (state.detail.room.members || []).map((id) => Object.assign({ id }, PEOPLE[id] || { name: (/^h-/.test(String(id)) ? '群成员' : String(id)) }));
+    const seen = new Set();
+    const out = [];
+    for (const member of list) {
+      if (!member || !member.id || seen.has(member.id)) continue;
+      seen.add(member.id);
+      out.push(member);
+    }
+    return out;
+  }
+
+  // 能力签名：用来判断「权限到底变没变」，变了才重画头部。
+  function signatureOf(me) {
+    if (!me) return '';
+    return [me.role, me.isSuper ? 'S' : '', (me.caps || []).slice().sort().join(','), me.pendingClose ? me.pendingClose.id + ':' + me.pendingClose.status : ''].join('|');
+  }
+
+  // 权限 v4：这个人在当前房间到底能干什么，一律问服务端。
+  // 顺带刷新 presence——解散确认闸靠它判断超管在不在线。
+  async function refreshMe() {
+    const roomId = (state.detail && state.detail.room && state.detail.room.id) || state.currentId || '';
+    if (!state.who) { state.me = { caps: [], isSuper: false, role: 'member', pendingClose: null }; return state.me; }
+    try {
+      // 不再传 who/key：服务端从会话 cookie 认人，这样前端也没法冒名。
+      const me = await api('/api/me' + (roomId ? '?roomId=' + encodeURIComponent(roomId) : ''));
+      state.me = me || null;
+    } catch {
+      state.me = { caps: [], isSuper: false, role: 'member', pendingClose: null };
+    }
+    return state.me;
+  }
+
+  // 超管看到的「有人要解散这间房」横幅：5 秒倒计时，不点就放行。
+  function renderPendingClose() {
+    if (!els.closeRequestBar) return;
+    const me = state.me || {};
+    const pc = me.pendingClose;
+    const show = !!(me.isSuper && pc && pc.status === 'pending');
+    els.closeRequestBar.hidden = !show;
+    if (!show) { clearInterval(state._pcTimer); state._pcTimer = null; return; }
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((Date.parse(pc.deadline) - Date.now()) / 1000));
+      els.closeRequestText.textContent = (pc.byName || pc.by) + ' 正在解散这间房 · ' + left + ' 秒后自动放行';
+      if (left <= 0) { clearInterval(state._pcTimer); state._pcTimer = null; }
+    };
+    tick();
+    if (!state._pcTimer) state._pcTimer = setInterval(tick, 250);
+  }
+
+  /* ---------- 成员管理（2026-11-05）----------
+   * 之前服务端有 setRole/transfer，界面完全没有入口，于是「怎么给别人设管理员」无解。
+   * 现在：群主/超管点头部成员条里的人 → 弹出这张卡 → 授予/撤销管理员、转让小群主。 */
+  const ROLE_KEY = { '超管': 'super', '群主': 'owner', '管理员': 'admin', '成员': 'member' };
+  function roleKeyOf(label) { return ROLE_KEY[String(label || '').trim()] || 'member'; }
+
+  // 一次性指路：能管人的身份第一次进房时，告诉他在哪儿点。每个身份只提示一次。
+  function hintManageOnce() {
+    if (state.hintMembersShown) return;
+    state.hintMembersShown = true;
+    let seen = '';
+    try { seen = localStorage.getItem('ds-teams:hint-members') || ''; } catch {}
+    if (seen && seen === String(state.who || '')) return;
+    try { localStorage.setItem('ds-teams:hint-members', String(state.who || '1')); } catch {}
+    setTimeout(() => toast('点成员的名字，可以设管理员 / 转让群主'), 700);
+  }
+
+  function openMemberDialog(memberId) {
+    if (!state.detail) return;
+    const member = currentMembers().find((m) => m && m.id === memberId);
+    if (!member) return;
+    const me = state.me || { caps: [], canActOn: [] };
+    const caps = new Set(me.caps || []);
+    const actable = new Set(me.canActOn || []);
+    const roleKey = roleKeyOf(member.role);
+    const manageable = actable.has(roleKey) && roleKey !== 'super';
+    state.memberPick = memberId;
+    state.transferArmed = false;
+    els.memberTitle.textContent = member.name || nameOf(memberId);
+    els.memberSub.textContent = '现在：' + (member.role || '成员') + '。改完立刻生效，房间里会留一条系统消息。';
+    setFormError(els.memberError, '');
+    const showRole = manageable && caps.has('member.setRole') && roleKey !== 'owner';
+    els.memberRoleBtn.hidden = !showRole;
+    els.memberRoleBtn.textContent = roleKey === 'admin' ? '撤销管理员' : '设为管理员';
+    const showTransfer = manageable && caps.has('member.transfer') && roleKey !== 'owner';
+    els.memberTransferBtn.hidden = !showTransfer;
+    els.memberTransferBtn.textContent = '转让小群主';
+    if (showRole || showTransfer) {
+      if (!els.memberDialog.open) els.memberDialog.showModal();
+    } else {
+      toast('这个人你动不了（同级或更高）', true);
+    }
+  }
+
+  async function setMemberRole() {
+    const id = state.memberPick;
+    if (!id || !state.detail) return;
+    const member = currentMembers().find((m) => m && m.id === id);
+    const next = roleKeyOf(member && member.role) === 'admin' ? 'member' : 'admin';
+    try {
+      await api('/api/rooms/' + state.detail.room.id + '/setRole', {
+        method: 'POST',
+        body: JSON.stringify({ who: state.who, memberId: id, role: next }),
+      });
+      els.memberDialog.close();
+      toast(next === 'admin' ? '已设为管理员' : '已撤销管理员');
+      await selectRoom(state.detail.room.id, { force: true });
+    } catch (err) {
+      setFormError(els.memberError, err.message || String(err));
+    }
+  }
+
+  async function transferOwner() {
+    const id = state.memberPick;
+    if (!id || !state.detail) return;
+    // 转让是不可逆的降权动作，点两次才算数
+    if (!state.transferArmed) {
+      state.transferArmed = true;
+      els.memberTransferBtn.textContent = '再点一次确认转让';
+      return;
+    }
+    try {
+      await api('/api/rooms/' + state.detail.room.id + '/transfer', {
+        method: 'POST',
+        body: JSON.stringify({ who: state.who, memberId: id }),
+      });
+      els.memberDialog.close();
+      toast('已转让小群主');
+      await selectRoom(state.detail.room.id, { force: true });
+    } catch (err) {
+      setFormError(els.memberError, err.message || String(err));
+    }
+  }
+
+  async function decideClose(verdict) {    if (!state.detail) return;
+    const id = state.detail.room.id;
+    try {
+      await api('/api/rooms/' + id + '/' + (verdict === 'denied' ? 'close-deny' : 'close-approve'), { method: 'POST', body: JSON.stringify({ who: state.who }) });
+      toast(verdict === 'denied' ? '已否决解散' : '已同意解散');
+    } catch (err) {
+      toast('操作失败：' + (err.message || err), 'error');
+    }
+    await selectRoom(id, { force: true });
+  }
+
+  function renderHeader() {
+    if (!state.detail) return;    if (els.closeRoomBtn && els.closeRoomBtn.classList.contains('is-armed')) disarmCloseButton();
+    const room = state.detail.room;
+    els.roomTitle.textContent = room.title || '未命名任务';
+    els.roomTitle.title = room.title || '';
+    els.roomStatus.className = 'pill ' + (room.status === 'open' ? 'is-open' : 'is-closed');
+    els.roomStatus.textContent = room.status === 'open' ? '进行中' : (room.status === 'archived' ? '已归档' : '已解散');
+    // 权限 v4（2026-11-05）：按钮显示完全由服务端 /api/me 的 caps 决定。
+    // 顺序是「先判超管，再判房内角色」——超管不管在哪个房间都是满血。
+    // 拿不到 me 时（比如刚切身份还没拉回来）按最小权限渲染，宁少不多。
+    const me = state.me || { caps: [], isSuper: false, role: 'member' };
+    const caps = new Set(me.caps || []);
+    const can = (cap) => caps.has(cap);
+    const isSuper = !!me.isSuper;
+    const canManage = room.status === 'open';
+    els.closeRoomBtn.hidden = !(can('room.close') && canManage);
+    els.archiveRoomBtn.hidden = !(can('room.archive') && room.status === 'closed');
+    els.inviteBtn.hidden = !(can('member.invite') && canManage);
+    els.kickBtn.hidden = !(can('member.kick') && canManage);
+    els.rulesBtn.hidden = !(can('room.rules') && canManage);
+    if (els.newRoomBtn) els.newRoomBtn.hidden = !isSuper;
+    renderPendingClose();
+
+    els.members.textContent = '';
+    renderMemberStrip();
+
+    refreshWakeChip();
+    refreshLatencyChip();
+    refreshSessionsChip();
+  }
+
+  /* ---------- 成员条（可以单独重画的部件） ----------
+   * 以前这段逻辑焊在 renderHeader 里，于是「只有成员变了」也得整块重画头部：
+   * 按钮、横幅、待确认态全被重建，还白跑三次网络请求。现在抽出来，
+   * 实时推送只重画这一条。 */
+  let memberSigPrev = null;   // 上一次渲染时的 [{id, sig}]，用来判断谁变了
+  function memberSig(m) { return [m.id, m.name || '', m.role || '', m.muted ? '1' : '0'].join('\u0001'); }
+  function renderMemberStrip(changedIds) {
+    if (!state.detail || !els.members) return;
+    const room = state.detail.room || {};
+    const me = state.me || { caps: [], isSuper: false, role: 'member' };
+    const caps = new Set(me.caps || []);
+    const can = (cap) => caps.has(cap);
+    const canManage = room.status === 'open';
+    // 「能不能动这个人」以服务端 /api/me 的 canActOn（可作用的角色列表）为准，
+    // 前端不自己算 rank —— 算错了就会点出一个必然 403 的按钮。
+    const actable = new Set(me.canActOn || []);
+    const canGrant = canManage && (can('member.setRole') || can('member.transfer'));
+    const members = currentMembers();
+
+    // 谁变了：角色/名字变了，或者新进来的人。显式传 changedIds 就只闪那些人。
+    // 首次渲染（memberSigPrev === null）一律不闪：刚打开页面满屏闪，看着像报错。
+    let flash;
+    if (changedIds) {
+      flash = new Set(changedIds);
+    } else {
+      flash = new Set();
+      if (memberSigPrev) {
+        const prev = new Map(memberSigPrev.map((sig) => [String(sig).split('\u0001')[0], sig]));
+        for (const m of members) if (prev.get(m.id) !== memberSig(m)) flash.add(m.id);
+      }
+    }
+    memberSigPrev = members.map((m) => memberSig(m));
+
+    els.members.textContent = '';
+    for (const member of members) {
+      const id = member.id || '';
+      const roleKey = roleKeyOf(member.role);
+      const manageable = canGrant && actable.has(roleKey) && roleKey !== 'super';
+      const chip = el(manageable ? 'button' : 'span', 'member who-' + (whoClass(id, 'system')) + (manageable ? ' is-manageable' : '') + (member.muted ? ' is-muted' : '') + (flash.has(id) ? ' is-changed' : ''));
+      if (manageable) {
+        chip.type = 'button';
+        chip.title = '点开管理 ' + (member.name || id) + '（设管理员 / 转让群主）';
+        chip.addEventListener('click', () => openMemberDialog(id));
+      }
+      chip.appendChild(el('i', 'dot'));
+      chip.appendChild(el('span', null, member.name || nameOf(id)));
+      if (member.role) chip.appendChild(el('span', 'role', member.role));
+      if (member.muted) chip.appendChild(el('span', 'mute-tag', '禁言'));
+      if (manageable) {
+        chip.appendChild(el('span', 'caret', '⌄'));
+        hintManageOnce();
+      }
+      if (!manageable) chip.title = (member.name || id) + (member.role ? ' · ' + member.role : '') + (member.muted ? ' · 已禁言' : '');
+      if (flash.has(id)) {
+        // 闪一下就摘掉 class：留着小圆点会像「未读」，下次推送又不清，就一直挂在那儿了
+        setTimeout(() => chip.classList.remove('is-changed'), 1900);
+      }
+      els.members.appendChild(chip);
+    }
+    return members;
+  }
+
+  // 唤醒治理 chip（docs/wake-governance.md §8）：拉 /api/wake/state 展示两人今日预算。
+  // 失败静默（服务端不可达时 chip 保持隐藏），不打断房间渲染。
+  async function refreshWakeChip() {
+    try {
+      const data = await api('/api/wake/state');
+      if (!data || !data.day || !data.days || !data.days[data.day]) return;
+      const me = data.days[data.day].me || { count: 0, blocked: 0 };
+      const daman = data.days[data.day].daman || { count: 0, blocked: 0 };
+      const limit = typeof data.limit === 'number' ? data.limit : 200;
+      els.wakeChip.textContent = `唤醒 me ${me.count}/${limit} · daman ${daman.count}/${limit}`;
+      const hca = data.highContextAge || {};
+      const high = Boolean(hca.me || hca.daman);
+      els.wakeChip.classList.toggle('is-warn', high);
+      els.wakeChip.title = high
+        ? `上下文年龄已高：累计注入 me ${data.injectTotals ? data.injectTotals.me || 0 : 0} · daman ${data.injectTotals ? data.injectTotals.daman || 0 : 0}，建议新开会话`
+        : '';
+      els.wakeChip.hidden = false;
+    } catch {
+      els.wakeChip.hidden = true;
+    }
+  }
+
+  // 评审端延迟告警开关（data/settings.json › reviewLatency，api 路径 /api/settings）。
+  // 开着且今天有超阈值的 warn 就把 chip 染黄并显示条数；关掉则显示「延迟告警 关」。
+  // 5 秒节流：renderHeader 被每条 SSE 消息触发，不节流会每条消息打两个请求。
+  let latencyAt = 0;
+  async function refreshLatencyChip() {
+    if (Date.now() - latencyAt < 5000) return;
+    latencyAt = Date.now();
+    try {
+      const [cfg, ops, ops2] = await Promise.all([api('/api/settings'), api('/api/ops/events?n=50&code=REVIEW_LATENCY'), api('/api/ops/events?n=50&code=REVIEW_LATENCY_CRITICAL')]);
+      const rl = (cfg && cfg.settings && cfg.settings.reviewLatency) || {};
+      const on = rl.enabled !== false;
+      const threshold = typeof rl.warnMs === 'number' ? rl.warnMs : 30000;
+      const critical = typeof rl.criticalMs === 'number' ? rl.criticalMs : 90000;
+      const criticalCount = ((ops2 && ops2.events) || []).filter((e) => localKey(e.at) === dayKey).length;
+      state.latency = { on, threshold };
+      const events = (ops && ops.events) || [];
+      // 只数今天（本地日）的，历史不堆在 chip 上。e.at 是 UTC ISO，必须先转本地再取日。
+      const today = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const dayKey = today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate());
+      const localKey = (iso) => {
+        const d = new Date(iso);
+        return Number.isNaN(d.getTime()) ? '' : d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+      };
+      const hits = events.filter((e) => localKey(e.at) === dayKey);
+      const clabel = critical < 60000 ? Math.round(critical / 1000) + '秒' : Math.round(critical / 60000) + '分';
+      const tlabel = threshold < 60000 ? Math.round(threshold / 1000) + '秒' : Math.round(threshold / 60000) + '分';
+      els.latencyChip.hidden = false;
+      els.latencyChip.classList.toggle('is-on', on);
+      els.latencyChip.classList.toggle('is-firing', on && hits.length > 0);
+      els.latencyChip.classList.toggle('is-critical', on && criticalCount > 0);
+      els.latencyChip.textContent = on
+        ? (hits.length ? `延迟 ${hits.length}${criticalCount ? '+' + criticalCount + '红' : ''}` : `延迟 ≤${tlabel}`)
+        : '延迟告警 关';
+      els.latencyChip.setAttribute('aria-pressed', String(on));
+      // 权限 v4：写开关看服务端给的 room.settings 能力，不再硬编码「是 you」。
+      const canToggle = new Set((state.me && state.me.caps) || []).has('room.settings');
+      els.latencyChip.disabled = !canToggle;
+      els.latencyChip.title = canToggle
+        ? (on
+          ? `评审超 ${tlabel} 记黄（今天 ${hits.length} 条），超 ${clabel} 记红并推群主房（今天 ${criticalCount} 条）。点击关闭。`
+          : '评审端延迟告警已关闭。点击打开。')
+        : (on ? `评审端延迟告警开着（超 ${tlabel} 记黄、超 ${clabel} 记红）。只有群主能改。` : '评审端延迟告警已关闭。只有群主能改。');
+    } catch {
+      els.latencyChip.hidden = true;
+    }
+  }
+
+  // 配置生效倒计时：台账 data/room-sessions.json 被改后，桥端 roomSessions() 还有 5 秒缓存
+  // （plugins/*-bridge*.mjs「5 秒缓存：改了 ≤5s 生效——这就是回滚通道」）。所以人改完台账不是立刻生效。
+  // 这里盯 /api/state 的 roomSessionsAt（文件 mtime）：比上次大就起 5 秒倒计时，到 0 显示「配置已生效」，
+  // 再 3 秒自动收起（点一下也收起）。初次加载只记基线，不提示。
+  let sessionsAt = 0;        // 上次看到的 mtimeMs（0 = 还没基线）
+  let sessionsPollAt = 0;    // 轮询节流：renderHeader 每条 SSE 都会调，这里自己压到 2 秒一次
+  let sessionsTimer = null;
+
+  function stopSessionsTimer() {
+    if (sessionsTimer) { clearInterval(sessionsTimer); sessionsTimer = null; }
+  }
+
+  function paintSessionsChip(text, phase) {
+    els.sessionsChip.textContent = text;
+    els.sessionsChip.classList.toggle('is-pending', phase === 'pending');
+    els.sessionsChip.classList.toggle('is-done', phase === 'done');
+    els.sessionsChip.hidden = false;
+  }
+
+  function startSessionsCountdown(seconds) {
+    stopSessionsTimer();
+    const until = Date.now() + seconds * 1000;
+    const hideAt = until + 3000;   // 生效后再留 3 秒给人看见
+    let done = false;
+    paintSessionsChip(`配置生效中 ${seconds}s`, 'pending');
+    sessionsTimer = setInterval(() => {
+      const now = Date.now();
+      if (now < until) {
+        paintSessionsChip(`配置生效中 ${Math.ceil((until - now) / 1000)}s`, 'pending');
+        return;
+      }
+      if (!done) { done = true; paintSessionsChip('配置已生效', 'done'); }
+      if (now >= hideAt) { stopSessionsTimer(); els.sessionsChip.hidden = true; }
+    }, 250);
+  }
+
+  async function refreshSessionsChip() {
+    if (Date.now() - sessionsPollAt < 2000) return;
+    sessionsPollAt = Date.now();
+    let data;
+    // since 给个远大于 db.seq 的值：只要 roomSessionsAt，别把历史消息拉下来
+    try { data = await api('/api/state?since=999999999'); } catch { return; }
+    const at = Number(data && data.roomSessionsAt) || 0;
+    if (!at) { sessionsAt = 0; return; }          // 台账不存在：没信息，不提示
+    if (sessionsAt && at > sessionsAt) startSessionsCountdown(5);
+    sessionsAt = at;
+  }
+
+  async function toggleLatencyWarn() {
+    const cur = state.latency || { on: true, threshold: 30000 };
+    const next = !cur.on;
+    els.latencyChip.disabled = true;
+    try {
+      await api('/api/settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ reviewLatency: { enabled: next } }),
+      });
+      toast(next ? '评审延迟告警：开' : '评审延迟告警：关');
+    } catch (e) {
+      toast('切换失败：' + e.message);
+    } finally {
+      els.latencyChip.disabled = false;
+      latencyAt = 0;   // 跳过节流，立刻回显
+      refreshLatencyChip();
+    }
+  }
+
+  function renderTimeline() {
+    els.timelineInner.textContent = '';
+    timelineEmpty = null;
+    const messages = state.detail ? state.detail.messages : [];
+    if (!messages.length) {
+      timelineEmpty = el('div', 'timeline-empty', '还没有消息。说第一句吧。');
+      els.timelineInner.appendChild(timelineEmpty);
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    for (const message of messages) frag.appendChild(buildMessage(message));
+    els.timelineInner.appendChild(frag);
+  }
+
+  function buildMessage(message) {
+    const kind = ['text', 'progress', 'report', 'review', 'system', 'file'].includes(message.kind) ? message.kind : 'text';
+    // 声明协议（claim）的三行噪音：我接 #seq / 让给你 #seq / 我 #seq 让给 @xx 了。
+    // 它们是协议信号不是对话，折成一行浅色小字，不占消息卡。
+    const claimText = String(message.text || '').trim();
+    if (/^我接\s*#\d+$/.test(claimText) || /^让给你\s*#\d+$/.test(claimText) || /^我\s*#\d+\s*让给/.test(claimText)) {
+      const whoName = personOf(message.who).short || '';
+      const note = el('div', 'msg claim-note');
+      note.dataset.seq = String(message.seq);
+      note.appendChild(el('span', 'claim-text', whoName + ' · ' + claimText));
+      return note;
+    }
+    if (kind === 'system') {
+      const wrap = el('div', 'msg system');
+      if (typeof message.seq === 'number') wrap.dataset.seq = String(message.seq);
+      wrap.appendChild(el('span', 'sys-text', message.text || '系统消息'));
+      return wrap;
+    }
+
+    const who = whoClass(message.who);
+    const person = personOf(message.who);
+    const row = el('div', 'msg who-' + who + ' kind-' + kind + (message.recalled ? ' recalled' : ''));
+    row.dataset.seq = String(message.seq);
+    row.appendChild(el('span', 'avatar', person.short));
+
+    const body = el('div', 'msg-body');
+    const head = el('div', 'msg-head');
+    head.appendChild(el('span', 'msg-name', person.name));
+    if (kind !== 'text') head.appendChild(el('span', 'msg-kind', KIND_LABEL[kind] || kind));
+    const time = el('span', 'msg-time', fmtTime(message.ts));
+    time.title = fmtFull(message.ts);
+    head.appendChild(time);
+
+    const open = state.detail && state.detail.room && state.detail.room.status === 'open';
+    if (!message.recalled && open) {
+      const actions = el('div', 'msg-actions');
+      const quoteBtn = el('button', 'msg-action', '引用');
+      quoteBtn.type = 'button';
+      quoteBtn.addEventListener('click', () => setQuote(message));
+      actions.appendChild(quoteBtn);
+      // 撤回按钮：自己的消息，或者有 message.recallAny（小群主/管理员/超管）
+      const canRecallAny = new Set((state.me && state.me.caps) || []).has('message.recallAny');
+      if (message.who === state.who || canRecallAny) {
+        const recallBtn = el('button', 'msg-action', '撤回');
+        recallBtn.type = 'button';
+        recallBtn.addEventListener('click', () => recallMessage(message));
+        actions.appendChild(recallBtn);
+      }
+      head.appendChild(actions);
+    }
+    body.appendChild(head);
+
+    if (message.recalled) {
+      body.appendChild(el('div', 'msg-text', '此消息已撤回'));
+      row.appendChild(body);
+      return row;
+    }
+    if (message.quote) body.appendChild(buildQuoteRef(message.quote));
+
+    if (kind === 'progress') body.appendChild(buildProgress(message));
+    else if (kind === 'report') body.appendChild(buildReportCard(message, { meta: false }));
+    else if (kind === 'review') body.appendChild(buildReview(message));
+    else if (kind === 'file') body.appendChild(buildFileCard(message));
+    else body.appendChild(el('div', 'msg-text', message.text || '（空消息）'));
+
+    row.appendChild(body);
+    return row;
+  }
+
+  function buildQuoteRef(quote) {
+    const ref = el('div', 'quote-ref');
+    const name = personOf(quote.who).name || '未知';
+    ref.appendChild(el('b', null, name + ' #' + quote.seq));
+    ref.appendChild(document.createTextNode(String(quote.text || '').slice(0, 200)));
+    return ref;
+  }
+
+  function buildProgress(message) {
+    const card = el('div', 'progress-card');
+    const top = el('div', 'progress-top');
+    top.appendChild(el('span', 'progress-label', '进度'));
+    if (message.taskId) top.appendChild(el('span', 'task-chip', '#' + message.taskId));
+
+    const raw = Number(message.percent);
+    const hasPercent = Number.isFinite(raw) && raw >= 0;
+    if (hasPercent) top.appendChild(el('span', 'progress-pct', Math.min(100, Math.round(raw)) + '%'));
+    card.appendChild(top);
+
+    if (hasPercent) {
+      const bar = el('div', 'bar');
+      const fill = el('i');
+      fill.style.width = Math.max(0, Math.min(100, raw)) + '%';
+      bar.appendChild(fill);
+      card.appendChild(bar);
+    }
+    if (message.text) card.appendChild(el('div', 'progress-text', message.text));
+    return card;
+  }
+
+  function buildReview(message) {
+    const card = el('div', 'review-card');
+    const target = message.target && message.target !== 'all' ? nameOf(message.target) : '全体';
+    card.appendChild(el('div', 'review-target', '互评 · 对象：' + target));
+    card.appendChild(el('div', 'review-text', message.text || '（空）'));
+    return card;
+  }
+
+  function buildFileCard(message) {
+    const f = message.file || {};
+    const card = el('div', 'file-card');
+    const isImg = /^image\//.test(f.mime || '') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name || '');
+    const url = f.url || '';
+    if (isImg && url) {
+      const img = document.createElement('img');
+      img.className = 'file-img';
+      img.src = withKey(url);
+      img.alt = f.name || '图片';
+      img.loading = 'lazy';
+      card.appendChild(img);
+    } else {
+      const row = el('div', 'file-row');
+      row.appendChild(el('span', 'file-icon', '📄'));
+      row.appendChild(el('span', 'file-name', f.name || '文件'));
+      row.appendChild(el('span', 'file-size', fmtSize(f.size)));
+      card.appendChild(row);
+    }
+    const foot = el('div', 'file-foot');
+    foot.appendChild(el('span', 'file-name', f.name || ''));
+    foot.appendChild(el('span', 'file-size', fmtSize(f.size)));
+    if (url) {
+      const a = el('a', 'file-dl', '下载');
+      a.href = withKey(url);
+      a.setAttribute('download', f.name || 'file');
+      a.target = '_blank';
+      a.rel = 'noopener';
+      foot.appendChild(a);
+    }
+    card.appendChild(foot);
+    if (message.text) card.appendChild(el('div', 'file-note', message.text));
+    return card;
+  }
+
+  function fmtSize(n) {
+    const x = Number(n) || 0;
+    return x >= 1048576 ? (x / 1048576).toFixed(1) + 'MB' : x >= 1024 ? Math.round(x / 1024) + 'KB' : x + 'B';
+  }
+
+  function buildReportCard(message, options) {
+    const opts = options || {};
+    const who = whoClass(message.who);
+    const card = el('div', 'report-card who-' + who);
+
+    const head = el('div', 'report-head');
+    head.appendChild(el('span', 'report-tag', '报告'));
+    head.appendChild(el('span', 'report-title', message.title || '报告'));
+    head.appendChild(el('span', 'badge ' + badgeClass(message.status), statusText(message.status)));
+    card.appendChild(head);
+
+    if (opts.meta) card.appendChild(el('div', 'report-meta', nameOf(who) + ' · ' + fmtTime(message.ts)));
+    card.appendChild(el('div', 'report-summary', message.text || '（无摘要）'));
+
+    const links = Array.isArray(message.links) ? message.links.filter(Boolean).slice(0, 20) : [];
+    if (links.length) {
+      const box = el('div', 'report-links');
+      for (const raw of links) {
+        const href = safeHref(raw);
+        if (href) {
+          const link = el('a', 'report-link', String(raw));
+          link.href = href;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          box.appendChild(link);
+        } else {
+          const span = el('span', 'report-link invalid', String(raw));
+          span.title = '该链接无法直接打开';
+          box.appendChild(span);
+        }
+      }
+      card.appendChild(box);
+    }
+
+    if (message.taskId) card.appendChild(el('div', 'report-task', '任务 #' + message.taskId));
+    return card;
+  }
+
+  /* ---------- 实时消息 ---------- */
+
+  function ingestMessage(message, options) {
+    const opts = options || {};
+    if (!message || typeof message.seq !== 'number' || !state.detail) return false;
+    if (message.roomId && state.currentId && message.roomId !== state.currentId) return false;
+
+    // 同一 seq 再次到达＝撤回/更新：原位替换，不重复追加
+    const existing = state.detail.messages.find((x) => x.seq === message.seq);
+    if (existing) {
+      Object.assign(existing, message);
+      const node = els.timelineInner.querySelector('.msg[data-seq="' + message.seq + '"]');
+      if (node) node.replaceWith(buildMessage(message));
+      if (message.recalled) {
+        state.detail.reports = state.detail.reports.filter((x) => x.seq !== message.seq);
+        state.detail.progress = state.detail.progress.filter((x) => x.seq !== message.seq);
+        state.detail.reviews = state.detail.reviews.filter((x) => x.seq !== message.seq);
+        updateReportCount();
+        if (state.reportsOpen) renderReports();
+        if (state.quote && state.quote.seq === message.seq) clearQuote();
+      }
+      return true;
+    }
+
+    const near = isNearBottom();
+    state.seqs.add(message.seq);
+    state.detail.messages.push(message);
+    if (message.kind === 'report') state.detail.reports.push(message);
+    else if (message.kind === 'progress') state.detail.progress.push(message);
+    else if (message.kind === 'review') state.detail.reviews.push(message);
+
+    if (timelineEmpty) {
+      timelineEmpty.remove();
+      timelineEmpty = null;
+    }
+    els.timelineInner.appendChild(buildMessage(message));
+
+    if (message.kind === 'report') {
+      updateReportCount();
+      if (state.reportsOpen) renderReports();
+    }
+
+    if (message.kind === 'system' && String(message.text || '').includes('解散')) {
+      if (state.detail.room.status !== 'closed') {
+        state.detail.room.status = 'closed';
+        renderHeader();
+        updateComposer();
+      }
+    }
+
+    scheduleRoomsRefresh();
+    if (opts.scroll !== false && (opts.force || near)) scrollToBottom(true);
+    return true;
+  }
+
+  function scheduleRoomsRefresh() {
+    if (state.refreshTimer) return;
+    state.refreshTimer = setTimeout(() => {
+      state.refreshTimer = null;
+      refreshRoomsQuiet();
+    }, 500);
+  }
+
+  async function refreshRoomsQuiet() {
+    try {
+      const data = await api('/api/rooms');
+      state.rooms = Array.isArray(data.rooms) ? data.rooms : [];
+      const current = state.rooms.find((room) => room.id === state.currentId);
+      if (current && state.detail) {
+        const previous = state.detail.room.status;
+        state.detail.room = Object.assign({}, state.detail.room, current);
+        if (previous !== current.status) {
+          renderHeader();
+          updateComposer();
+        }
+      }
+      renderRooms();
+      refreshWakeChip();
+    } catch {}
+  }
+
+  async function syncMessages() {
+    if (!state.detail || !state.currentId) return;
+    const id = state.currentId;
+    let last = 0;
+    for (const message of state.detail.messages) last = Math.max(last, message.seq || 0);
+    try {
+      const data = await api('/api/rooms/' + encodeURIComponent(id) + '/messages?since=' + last);
+      if (id !== state.currentId) return;
+      const near = isNearBottom();
+      const list = (data.messages || []).slice().sort((a, b) => a.seq - b.seq);
+      let added = 0;
+      for (const message of list) {
+        if (ingestMessage(message, { scroll: false })) added++;
+      }
+      if (added && near) scrollToBottom(false);
+    } catch (error) {
+      handleRoomGone(error);
+    }
+  }
+
+  // 房间还在不在、成员/角色/状态有没有变——靠这一路，别让页面停在旧快照上。
+  // 服务端 `?since=` 只回增量消息，所以拉一次也不搬全量。
+  // 触发者有两个：SSE 的 event: meta（有人改了什么，立刻拉）和 10 秒轮询（隧道缓冲 SSE 时的兜底）。
+  async function syncRoomMeta() {
+    if (!state.detail || !state.currentId) return;
+    if (state.archiveRooms.some((r) => r.id === state.currentId)) return;
+    const id = state.currentId;
+    let last = 0;
+    for (const message of state.detail.messages) last = Math.max(last, message.seq || 0);
+    let data;
+    try {
+      data = await api('/api/rooms/' + encodeURIComponent(id) + '?since=' + last);
+    } catch (error) {
+      handleRoomGone(error);
+      return;
+    }
+    if (id !== state.currentId || !state.detail) return;
+    // muted 也算「变了」：禁言只改 muted，不带上它就永远是「成员没变」，标签刷不出来
+    const sigOf = (list) => JSON.stringify((list || []).map((m) => [m.id, m.role, m.name, m.muted ? 1 : 0]));
+    const beforeMembers = sigOf(state.detail.members);
+    const beforeStatus = state.detail.room && state.detail.room.status;
+    state.detail.room = data.room || state.detail.room;
+    if (Array.isArray(data.members)) state.detail.members = data.members;
+    const statusChanged = beforeStatus !== (state.detail.room && state.detail.room.status);
+    const membersChanged = beforeMembers !== sigOf(state.detail.members);
+    if (statusChanged) {
+      // 状态变了（进行中 → 已解散）：整块重画，按钮和输入框都得跟着变
+      renderHeader();
+      updateComposer();
+      scheduleRoomsRefresh();
+    } else if (membersChanged) {
+      // 只有成员/角色变：只重画那一条，谁变了一目了然（带闪一下）
+      renderMemberStrip();
+    }
+    for (const message of (data.messages || []).slice().sort((a, b) => a.seq - b.seq)) ingestMessage(message);
+  }
+
+  // 服务端说「这间房变了」→ 拉一次元信息。120ms 防抖：一次操作常连推两帧
+  // （落一条系统卡 + 改房间字段），别为一个动作拉两遍。
+  let metaRefreshTimer = null;
+  function scheduleMetaRefresh() {
+    if (metaRefreshTimer) return;
+    metaRefreshTimer = setTimeout(() => {
+      metaRefreshTimer = null;
+      syncRoomMeta();
+    }, 120);
+  }
+
+  // 房间没了（被解散归档、或者你被移出）：不要让页面停在旧内容上。
+  // 两种原因要分开说：被踢是「你不在名单里了」，解散是「房间本身没了」。
+  // 以前一律说「这个房间不在了」，被踢的人会以为房间被解散，还会看到成员条残留。
+  function handleRoomGone(error) {
+    const text = String((error && error.message) || '');
+    if (!/no such room|not a member|404|403/.test(text)) return;
+    if (state.roomGoneAt) return;
+    state.roomGoneAt = Date.now();
+    const kicked = /not a member/.test(text);
+    toast(kicked ? '你已被移出这间房，已刷新列表' : '这间房已解散或归档，已刷新列表', true);
+    closeSSE();
+    state.currentId = null;
+    state.detail = null;
+    // 成员条是独立渲染的，不清就会留着上一间房的人（被踢后最刺眼的就是这个）
+    memberSigPrev = null;
+    if (els.members) els.members.textContent = '';
+    loadRooms()
+      .then(() => {
+        const next = state.rooms.find((r) => r.status === 'open');
+        if (next) return selectRoom(next.id, { force: true });
+        showEmpty('没有房间', '选一间，或让群主拉你进来。');
+      })
+      .catch(() => {})
+      .finally(() => {
+        setTimeout(() => { state.roomGoneAt = 0; }, 4000);
+      });
+  }
+
+  function setConn(mode, text) {
+    els.conn.className = 'conn' + (mode ? ' ' + mode : '');
+    els.connLabel.textContent = text;
+    els.conn.title = text;
+  }
+
+  function closeSSE(clearRetry) {
+    if (state.reconnectTimer) {
+      clearTimeout(state.reconnectTimer);
+      state.reconnectTimer = null;
+    }
+    if (state.sse) {
+      try { state.sse.close(); } catch {}
+      state.sse = null;
+    }
+    if (clearRetry !== false) state.retry = 0;
+  }
+
+  function scheduleReconnect() {
+    if (state.reconnectTimer || !state.currentId) return;
+    // 指数退避 + 抖动：服务重启时所有页面会同时掉线，没有抖动就会整齐地一起撞回来。
+    // 取 [raw/2, raw) 区间，既保留退避的收敛性，又打散重连时刻。
+    const raw = Math.min(15000, 800 * Math.pow(2, Math.min(state.retry, 5)));
+    const delay = Math.round(raw / 2 + Math.random() * raw / 2);
+    state.retry += 1;
+    state.reconnectTimer = setTimeout(() => {
+      state.reconnectTimer = null;
+      if (state.currentId && !state.sse) connectSSE();
+    }, delay);
+  }
+
+  function connectSSE() {
+    if (!state.currentId) return;
+    closeSSE(false);
+    const id = state.currentId;
+    setConn('connecting', '连接中');
+
+    let es;
+    try {
+      es = new EventSource(withKey('/events?room=' + encodeURIComponent(id)));
+    } catch {
+      setConn('down', '重连中');
+      scheduleReconnect();
+      return;
+    }
+    state.sse = es;
+
+    es.onopen = () => {
+      if (state.sse !== es) return;
+      state.retry = 0;
+      setConn('live', '实时');
+    };
+
+    es.addEventListener('init', () => {
+      if (state.sse !== es) return;
+      state.retry = 0;
+      setConn('live', '实时');
+      syncMessages();
+      // 断线期间可能错过了「谁被设成管理员」这类推送：连上先对一次元信息，
+      // 不然重连后要等下一次轮询才补上（最多 10 秒的旧快照）。
+      syncRoomMeta();
+    });
+
+    // 服务端主动推的元信息变更（成员进出、设/撤管理员、转让、禁言、解散待确认……）。
+    // 不解析语义，收到就重拉——语义留在服务端，前端少一处会算错的地方。
+    es.addEventListener('meta', (event) => {
+      if (state.sse !== es) return;
+      let payload = {};
+      try { payload = JSON.parse(event.data) || {}; } catch {}
+      if (payload.roomId && payload.roomId !== state.currentId) return;
+      scheduleMetaRefresh();
+    });
+
+    // 房间列表级变化（新建 / 解散 / 归档 / 自己被移出）：左栏立刻重拉
+    es.addEventListener('rooms', () => {
+      if (state.sse !== es) return;
+      scheduleRoomsRefresh();
+    });
+
+    es.addEventListener('msg', (event) => {
+      if (state.sse !== es) return;
+      let message;
+      try { message = JSON.parse(event.data); } catch { return; }
+      ingestMessage(message);
+    });
+
+    es.onerror = () => {
+      if (state.sse !== es) return;
+      setConn('down', '重连中');
+      try { es.close(); } catch {}
+      state.sse = null;
+      scheduleReconnect();
+    };
+  }
+
+  /* ---------- 报告汇总 ---------- */
+
+  function updateReportCount() {
+    const count = state.detail ? state.detail.reports.length : 0;
+    els.reportsCount.textContent = String(count);
+  }
+
+  function renderReports() {
+    els.reportsList.textContent = '';
+    const reports = state.detail ? state.detail.reports.slice().sort((a, b) => b.seq - a.seq) : [];
+    if (!reports.length) {
+      els.reportsList.appendChild(el('div', 'reports-empty', '还没有报告。\n任务有阶段性成果时，报告会出现在这里。'));
+      return;
+    }
+    for (const message of reports) {
+      els.reportsList.appendChild(buildReportCard(message, { meta: true }));
+    }
+  }
+
+  function setReportsOpen(open) {
+    const shouldOpen = !!open && !!state.detail;
+    state.reportsOpen = shouldOpen;
+    els.reportsPanel.classList.toggle('open', shouldOpen);
+    els.reportsPanel.setAttribute('aria-hidden', String(!shouldOpen));
+    els.reportsScrim.classList.toggle('show', shouldOpen);
+    els.reportsBtn.setAttribute('aria-expanded', String(shouldOpen));
+    if (shouldOpen) {
+      if (state.memoryOpen) setMemoryOpen(false);
+      renderReports();
+    }
+  }
+
+  /* ---------- 房间记忆 ---------- */
+
+  // 相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前，超 7 天退回绝对时间
+  function fmtAgo(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const diff = Date.now() - d.getTime();
+    if (diff < 60000) return '刚刚';
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 60) return minutes + ' 分钟前';
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + ' 小时前';
+    const days = Math.floor(hours / 24);
+    if (days < 7) return days + ' 天前';
+    return fmtTime(iso);
+  }
+
+  async function loadMemory() {
+    const id = state.currentId;
+    if (!state.detail || !id) return;
+    state.memoryLoading = true;
+    state.memoryError = '';
+    renderMemory();
+    try {
+      const data = await api('/api/rooms/' + encodeURIComponent(id) + '/memory');
+      if (state.currentId !== id) return;
+      // 契约承诺倒序；再按 ts 排一次兜底，保证面板里永远新在前
+      const entries = Array.isArray(data.entries) ? data.entries : [];
+      state.memoryEntries = entries.slice().sort((a, b) => String(b.ts || '').localeCompare(String(a.ts || '')));
+      state.memoryCount = Number.isFinite(Number(data.count)) ? Number(data.count) : state.memoryEntries.length;
+    } catch (error) {
+      if (state.currentId !== id) return;
+      state.memoryEntries = [];
+      state.memoryError = error && error.message ? error.message : '加载失败';
+    }
+    if (state.currentId !== id) return;
+    state.memoryLoading = false;
+    updateMemoryCount();
+    renderMemory();
+  }
+
+  function buildMemoryItem(entry) {
+    const who = whoClass(entry.by, '');
+    const item = el('div', 'memory-item' + (who ? ' who-' + who : ''));
+    const head = el('div', 'memory-item-head');
+    head.appendChild(el('span', 'memory-item-by', nameOf(entry.by)));
+    const time = el('span', 'memory-item-time', fmtAgo(entry.ts));
+    time.title = fmtFull(entry.ts);
+    head.appendChild(time);
+    item.appendChild(head);
+    item.appendChild(el('div', 'memory-item-text', entry.text || '（空）'));
+    return item;
+  }
+
+  function renderMemory() {
+    els.memoryList.textContent = '';
+    if (state.memoryLoading) {
+      els.memoryList.appendChild(el('div', 'memory-empty', '加载中…'));
+      return;
+    }
+    if (state.memoryError) {
+      const box = el('div', 'memory-error');
+      box.appendChild(el('div', null, '加载失败：' + state.memoryError));
+      const retry = el('button', 'btn btn-ghost', '重试');
+      retry.type = 'button';
+      retry.addEventListener('click', () => loadMemory());
+      box.appendChild(retry);
+      els.memoryList.appendChild(box);
+      return;
+    }
+    if (!state.memoryEntries.length) {
+      els.memoryList.appendChild(el('div', 'memory-empty', '还没有记忆。\n重要的事记在这里，只给这个房间的人看。'));
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    for (const entry of state.memoryEntries) frag.appendChild(buildMemoryItem(entry));
+    els.memoryList.appendChild(frag);
+  }
+
+  function updateMemoryCount() {
+    els.memoryCount.textContent = String(state.memoryCount || 0);
+  }
+
+  function autoGrowMemory() {
+    els.memoryInput.style.height = 'auto';
+    els.memoryInput.style.height = Math.min(els.memoryInput.scrollHeight, 132) + 'px';
+  }
+
+  function setMemoryHint(message, isError) {
+    els.memoryHint.textContent = message || '≤2000 字 · 只给这个房间看';
+    els.memoryHint.classList.toggle('error', !!isError);
+  }
+
+  function updateMemoryComposer() {
+    const closed = !state.detail || state.detail.room.status !== 'open';
+    els.memoryInput.disabled = closed || state.memorySending;
+    els.memoryInput.placeholder = closed ? '房间已解散，仅可回看' : '记一条…（Enter 发送，Shift+Enter 换行）';
+    els.memorySend.disabled = closed || state.memorySending || !els.memoryInput.value.trim();
+    els.memorySend.textContent = state.memorySending ? '记下中…' : '记下';
+  }
+
+  function setMemoryOpen(open) {
+    const shouldOpen = !!open && !!state.detail;
+    state.memoryOpen = shouldOpen;
+    els.memoryPanel.classList.toggle('open', shouldOpen);
+    els.memoryPanel.setAttribute('aria-hidden', String(!shouldOpen));
+    els.memoryScrim.classList.toggle('show', shouldOpen);
+    els.memoryBtn.setAttribute('aria-expanded', String(shouldOpen));
+    if (shouldOpen) {
+      if (state.reportsOpen) setReportsOpen(false);
+      setMemoryHint('');
+      updateMemoryComposer();
+      loadMemory();
+      setTimeout(() => els.memoryInput.focus(), 80);
+    }
+  }
+
+  async function sendMemory() {
+    if (!state.detail || state.detail.room.status !== 'open' || state.memorySending) return;
+    const text = els.memoryInput.value.trim();
+    if (!text) return;
+    state.memorySending = true;
+    updateMemoryComposer();
+    setMemoryHint('正在保存…');
+    try {
+      // who 取页面当前身份；key 由 api() 按身份自动注入（与发言同一条鉴权链路），?k= 也在 URL 上
+      await api('/api/rooms/' + encodeURIComponent(state.currentId) + '/memory', {
+        method: 'POST',
+        body: JSON.stringify({ who: state.who, text }),
+      });
+      // 慢发送期间用户可能继续输入：只有输入框仍是刚发出的内容时才清空
+      if (els.memoryInput.value.trim() === text) els.memoryInput.value = '';
+      setMemoryHint('已记住');
+      toast('已记住');
+      await loadMemory();
+    } catch (error) {
+      const message = error && error.message ? error.message : '保存失败';
+      setMemoryHint('保存失败：' + message, true);
+      toast('保存失败：' + message, true);
+    } finally {
+      state.memorySending = false;
+      updateMemoryComposer();
+      els.memoryInput.focus();
+    }
+  }
+
+  /* ---------- 发言 ---------- */
+
+  function identityName(who) {
+    if (PEOPLE[who] && PEOPLE[who].name) return PEOPLE[who].label || PEOPLE[who].name;
+    if (state.me && state.me.id === who && state.me.name) return state.me.name;
+    const m = currentMembers().find((x) => x && x.id === who && x.name);
+    if (m) return m.name;
+    return /^h-/.test(String(who)) ? '群成员' : who;
+  }
+
+  function buildIdentity() {
+    els.identity.textContent = '';
+    // 2026-11-05：身份只有一个——服务端会话认定的那个人。
+    // 原来这里是「超管可切 you/me/daman 代发」，那套切换靠 /api/member 发下来的 key，
+    // 而正是那把 key 让任何拿到隧道链接的人都能当群主。key 不再下发，切换也一并去掉。
+    if (!state.who) return;
+    const button = el('button', 'who-btn who-self');
+    button.type = 'button';
+    button.title = identityName(state.who) + (state.isSuper ? '（超级群主）' : '');
+    button.setAttribute('aria-pressed', 'true');
+    button.style.setProperty('--who', 'var(--you)');
+    button.appendChild(el('i', 'dot'));
+    button.appendChild(el('span', null, identityName(state.who) + (state.isSuper ? ' · 超管' : '')));
+    els.identity.appendChild(button);
+
+    const out = el('button', 'who-btn who-logout', '退出');
+    out.type = 'button';
+    out.title = '退出登录';
+    out.addEventListener('click', async () => {
+      try { await api('/api/auth/logout', { method: 'POST', body: '{}' }); } catch {}
+      try { localStorage.removeItem('ds-teams:who'); localStorage.removeItem('ds-teams:keys'); } catch {}
+      location.reload();
+    });
+    els.identity.appendChild(out);
+  }
+
+  async function syncIdentity() {
+    await refreshMe();
+    buildIdentity();
+    // 成员管理按钮跟随身份与能力
+    if (state.detail) renderHeader();
+  }
+
+  function isTouchUI() {
+    return !!(window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches);
+  }
+
+  function autoGrow() {
+    els.input.style.height = 'auto';
+    els.input.style.height = Math.min(els.input.scrollHeight, 132) + 'px';
+  }
+
+  // 占位符只写一句短话：长的「（Enter 发送，Shift+Enter 换行）」在手机上会被挤成两行，
+  // 而窄屏那行提示本身是隐藏的，按键规则改由 .composer-hint（桌面）说明。
+  const INPUT_PLACEHOLDER = '说点什么…';
+
+  function updateComposer() {
+    if (!state.detail) return;
+    const closed = state.detail.room.status !== 'open';
+    if (closed && state.quote) clearQuote();
+    els.composer.classList.toggle('closed', closed);
+    els.input.disabled = closed;
+    els.input.placeholder = closed
+      ? (state.detail.room.status === 'archived' ? '已归档，仅可回看' : '房间已解散，仅可回看')
+      : INPUT_PLACEHOLDER;
+    els.sendBtn.disabled = closed || state.sending || !els.input.value.trim();
+    els.sendBtn.textContent = state.sending ? '发送中' : '发送';
+    for (const button of els.identity.querySelectorAll('.who-btn')) button.disabled = closed;
+    if (closed) els.composerHint.textContent = '房间已解散，仅可回看。';
+    else if (state.sending) els.composerHint.textContent = '正在发送…';
+    else els.composerHint.textContent = isTouchUI() ? '回车换行 · 点「发送」送出' : 'Enter 发送 · Shift+Enter 换行';
+  }
+
+  function setQuote(message) {
+    if (!state.detail || state.detail.room.status !== 'open') return;
+    state.quote = { seq: message.seq, who: message.who, text: String(message.text || '').slice(0, 200) };
+    els.quoteBar.hidden = false;
+    els.quoteBarText.textContent = personOf(message.who).name + ' #' + message.seq + '：' + String(message.text || '').slice(0, 120);
+    els.input.focus();
+  }
+
+  function clearQuote() {
+    state.quote = null;
+    els.quoteBar.hidden = true;
+    els.quoteBarText.textContent = '';
+  }
+
+  async function recallMessage(message) {
+    if (!state.detail || state.detail.room.status !== 'open') return;
+    if (!confirm('撤回这条消息？')) return;
+    try {
+      const data = await api('/api/rooms/' + encodeURIComponent(state.currentId) + '/recall', {
+        method: 'POST',
+        body: JSON.stringify({ who: state.who, seq: message.seq }),
+      });
+      if (data.message) ingestMessage(data.message);
+      toast('已撤回');
+    } catch (error) {
+      toast('撤回失败：' + error.message, true);
+    }
+  }
+
+  async function sendMessage() {
+    if (!state.detail || state.detail.room.status !== 'open' || state.sending) return;
+    const text = els.input.value.trim();
+    if (!text) return;
+
+    state.sending = true;
+    updateComposer();
+    // 发送前输入框是否还在焦点里。手机上如果滑走了键盘、或用户根本是用鼠标点的，
+    // 这里再 focus() 会把键盘硬拉起来——就是「发完又弹一下」。
+    const wasFocused = document.activeElement === els.input;
+    try {
+      const data = await api('/api/rooms/' + encodeURIComponent(state.currentId) + '/say', {
+        method: 'POST',
+        body: JSON.stringify({
+          who: state.who,
+          text,
+          msgId: (globalThis.crypto?.randomUUID?.() || String(Date.now()) + '-' + Math.random().toString(16).slice(2)),
+          quoteSeq: state.quote ? state.quote.seq : 0,
+        }),
+      });
+      // 慢发送期间用户可能已继续输入：只有输入框仍是刚发出的内容时才清空
+      if (els.input.value.trim() === text) {
+        els.input.value = '';
+        // 清空后必须等一帧再量：同一帧里 scrollHeight 还是旧高度，
+        // 输入框会卡在两行的位置不回缩（手机上看着就是「发完还占着两行」）。
+        els.input.style.height = '';
+        requestAnimationFrame(autoGrow);
+      }
+      if (data.message) ingestMessage(data.message, { scroll: false });
+      if (state.quote) clearQuote();
+      scrollToBottom(true);
+    } catch (error) {
+      toast('发送失败：' + error.message, true);
+    } finally {
+      state.sending = false;
+      updateComposer();
+      // 只在「本来就还在输入」时把焦点交回去，让键盘保持不落。
+      // 已经失焦（用户收起了键盘、或点了别处）就别再拉起来。
+      if (wasFocused) els.input.focus();
+    }
+  }
+
+  const MAX_FILE = 25 * 1024 * 1024;
+  const ALLOW_EXT = /\.(png|jpe?g|webp|gif|bmp|docx|xlsx|pptx|pdf|txt|md|csv|json|zip)$/i;
+
+  function readAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('读取文件失败'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function uploadFile(file) {
+    if (!state.detail || state.detail.room.status !== 'open') return void toast('房间已解散，仅可回看。', true);
+    if (file.size > MAX_FILE) return void toast('文件超过 25MB', true);
+    if (!ALLOW_EXT.test(file.name || '')) return void toast('不支持这种类型（视频不收）', true);
+    if (!/^(image\/(png|jpeg|webp|gif|bmp))|(application\/|text\/)/.test(file.type || '')) {
+      if (!ALLOW_EXT.test(file.name || '')) return void toast('不支持这种类型（视频不收）', true);
+    }
+    const save = state.sending;
+    state.sending = true;
+    updateComposer();
+    els.composerHint.textContent = '上传中：' + file.name;
+    try {
+      const dataUrl = await readAsDataURL(file);
+      const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+      const res = await fetch(withKey('/api/rooms/' + encodeURIComponent(state.currentId) + '/file'), {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          who: state.who,
+          name: file.name,
+          mime: file.type || 'application/octet-stream',
+          data: base64,
+          note: els.input.value.trim(),
+          quoteSeq: state.quote ? state.quote.seq : 0,
+        }),
+      });
+      let data = {};
+      try { data = await res.json(); } catch {}
+      if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+      if (data.message) {
+        ingestMessage(data.message, { scroll: false });
+        scrollToBottom(true);
+      }
+      if (els.input.value.trim()) { els.input.value = ''; autoGrow(); }
+      if (state.quote) clearQuote();
+      toast('已发送：' + (data.file ? data.file.name : file.name));
+    } catch (error) {
+      toast('上传失败：' + error.message, true);
+    } finally {
+      state.sending = save;
+      updateComposer();
+    }
+  }
+
+  /* ---------- 新建 / 解散 ---------- */
+
+  function openNewRoom() {
+    els.newRoomForm.reset();
+    els.roomTitleInput.value = '';
+    els.newRoomError.hidden = true;
+    els.newRoomError.textContent = '';
+    els.newRoomDialog.showModal();
+    setTimeout(() => els.roomTitleInput.focus(), 30);
+  }
+
+  function showNewRoomError(message) {
+    els.newRoomError.textContent = message;
+    els.newRoomError.hidden = false;
+  }
+
+  async function createRoom() {
+    const title = els.roomTitleInput.value.trim();
+    if (!title) {
+      showNewRoomError('给房间起个标题。');
+      els.roomTitleInput.focus();
+      return;
+    }
+    els.newRoomSubmit.disabled = true;
+    els.newRoomSubmit.textContent = '创建中…';
+    els.newRoomError.hidden = true;
+    try {
+      // 2026-11-05（会话登录）：建群方就是当前登录的人，不再写死 me/daman。
+      // 只有超管和两个 AI 能建房（服务端 room.create 闸），所以这里 state.who 必是三者之一。
+      const declaredBy = state.who || '';
+      const data = await api('/api/rooms', {
+        method: 'POST',
+        body: JSON.stringify({ title, declaredBy }),
+      });
+      els.newRoomDialog.close();
+      await loadRooms();
+      await selectRoom(data.room.id);
+      toast('房间已创建');
+    } catch (error) {
+      showNewRoomError('创建失败：' + error.message);
+    } finally {
+      els.newRoomSubmit.disabled = false;
+      els.newRoomSubmit.textContent = '创建';
+    }
+  }
+
+  async function archiveCurrentRoom() {
+    if (!state.detail || state.detail.room.status !== 'closed') return;
+    els.archiveRoomBtn.disabled = true;
+    try {
+      await api('/api/rooms/' + encodeURIComponent(state.currentId) + '/archive', { method: 'POST', body: JSON.stringify({ who: 'you' }) });
+      toast('已归档');
+      await loadRooms();
+      await loadArchive();
+      state.currentId = null;
+      state.detail = null;
+      showEmpty('已归档', '这个房间已经收进归档。点左上角「返回进行中」旁边的归档按钮可以找回来。');
+    } catch (error) {
+      toast('归档失败：' + error.message, true);
+    } finally {
+      els.archiveRoomBtn.disabled = false;
+    }
+  }
+
+  let closeArmedUntil = 0;
+  let closeArmTimer = 0;
+  function disarmCloseButton() {
+    closeArmedUntil = 0;
+    clearTimeout(closeArmTimer);
+    els.closeRoomBtn.textContent = '解散';
+    els.closeRoomBtn.classList.remove('is-armed');
+  }
+  async function closeRoom() {
+    if (!state.detail || state.detail.room.status !== 'open') return;
+    if (Date.now() > closeArmedUntil) {
+      // 不用 window.confirm：手机内置浏览器会静默吞掉原生确认框，点了像没反应
+      closeArmedUntil = Date.now() + 5000;
+      els.closeRoomBtn.textContent = '再点一次确认';
+      els.closeRoomBtn.classList.add('is-armed');
+      toast('解散后房间转入归档（数据保留）。5 秒内再点一次确认');
+      clearTimeout(closeArmTimer);
+      closeArmTimer = setTimeout(() => {
+        if (Date.now() >= closeArmedUntil) disarmCloseButton();
+      }, 5200);
+      return;
+    }
+    disarmCloseButton();
+    els.closeRoomBtn.disabled = true;
+    try {
+      const data = await api('/api/rooms/' + encodeURIComponent(state.currentId) + '/close', {
+        method: 'POST',
+        body: JSON.stringify({ who: state.who }),
+      });
+      // 权限 v4：小群主解散要等超管放行，服务端回 202 pending。
+      if (data && data.pending) {
+        toast('已提交解散申请，' + (data.request && data.request.by ? '等你（超管）5 秒内否决' : '等群主放行'));
+        if (data.room) { state.detail.room = Object.assign({}, state.detail.room, data.room); renderHeader(); }
+        await loadRooms();
+        return;
+      }
+      if (state.detail && data.room) {
+        state.detail.room = Object.assign({}, state.detail.room, data.room);
+        renderHeader();
+        updateComposer();
+      }
+      await loadRooms();
+      toast('房间已解散');
+    } catch (error) {
+      toast('解散失败：' + error.message, true);
+    } finally {
+      els.closeRoomBtn.disabled = false;
+    }
+  }
+
+  /* ---------- 成员管理 ---------- */
+
+  function canManageMembers() {
+    const caps = new Set((state.me && state.me.caps) || []);
+    return caps.has('member.kick') && !!state.detail && state.detail.room.status === 'open';
+  }
+
+  async function refreshCurrentRoom() {
+    if (!state.currentId) return;
+    await selectRoom(state.currentId, { force: true });
+  }
+
+  function personKindLabel(kind) {
+    return kind === 'agent' ? 'agent' : '真人';
+  }
+
+  function personRoleLabel(role) {
+    const value = String(role || 'member');
+    if (value === 'admin' || value === '管理员') return '管理员';
+    if (value === 'member' || value === '成员') return '成员';
+    return value;
+  }
+
+  function personMeta(person) {
+    const bits = [personKindLabel(person.kind), personRoleLabel(person.role)];
+    if (person.note) bits.push(person.note);
+    return bits.join(' · ');
+  }
+
+  function openInviteDialog() {
+    if (!canManageMembers()) return;
+    invitePeople = [];
+    inviteSelectedId = '';
+    setFormError(els.inviteError, '');
+    els.newPersonResult.hidden = true;
+    els.inviteLinkResult.hidden = true;
+    els.newPersonName.value = '';
+    els.newPersonKind.value = 'human';
+    els.inviteList.textContent = '';
+    els.inviteList.appendChild(el('div', 'person-empty', '加载中…'));
+    els.inviteTokenList.textContent = '';
+    els.inviteTokenList.appendChild(el('div', 'person-empty', '加载中…'));
+    updateInviteSubmit();
+    if (!els.inviteDialog.open) els.inviteDialog.showModal();
+    loadInviteCandidates();
+    loadInviteTokens();
+    setTimeout(() => els.newPersonName.focus(), 30);
+  }
+
+  /** 生成一条一次性邀请链接：只发链接，不指定人。 */
+  async function generateInvite() {
+    if (!state.currentId) return;
+    els.genInviteBtn.disabled = true;
+    const old = els.genInviteBtn.textContent;
+    els.genInviteBtn.textContent = '生成中…';
+    setFormError(els.inviteError, '');
+    try {
+      const data = await api('/api/rooms/' + encodeURIComponent(state.currentId) + '/invite', {
+        method: 'POST',
+        body: JSON.stringify({ who: state.who, base: location.origin }),
+      });
+      renderCopyBox(els.inviteLinkResult, '一次性邀请链接（谁点开就按他输的名字进房）', data.url || '');
+      toast('邀请链接已生成');
+      await loadInviteTokens();
+    } catch (error) {
+      setFormError(els.inviteError, '生成失败：' + error.message);
+    } finally {
+      els.genInviteBtn.disabled = false;
+      els.genInviteBtn.textContent = old;
+    }
+  }
+
+  async function loadInviteTokens() {
+    if (!state.currentId) return;
+    try {
+      // GET 没有 body，服务端从会话 cookie 认人（以前这里要拼 &mk=<key>，key 已不下发）。
+      const q = '/api/rooms/' + encodeURIComponent(state.currentId) + '/invites'
+        + '?base=' + encodeURIComponent(location.origin);
+      const data = await api(q);
+      renderInviteTokens(Array.isArray(data.invites) ? data.invites : []);
+    } catch {
+      els.inviteTokenList.textContent = '';
+      els.inviteTokenList.appendChild(el('div', 'person-empty', '链接列表加载失败。'));
+    }
+  }
+
+  function renderInviteTokens(items) {
+    els.inviteTokenList.textContent = '';
+    if (!items.length) {
+      els.inviteTokenList.appendChild(el('div', 'person-empty', '还没有邀请链接。'));
+      return;
+    }
+    for (const item of items) {
+      const row = el('div', 'person-row person-row-static');
+      const main = el('div', 'person-main');
+      const who = item.status === 'dead' ? '已作废（持有人被移出）'
+        : item.status === 'used' ? '已占用 · ' + (item.seatName || '有人')
+        : '未使用 · 同名可继承';
+      main.appendChild(el('div', 'person-name', who));
+      main.appendChild(el('div', 'person-meta', (item.by ? item.by + ' 生成 · ' : '') + fmtTime(item.at)));
+      row.appendChild(main);
+      if (item.status !== 'dead') {
+        const copy = el('button', 'btn btn-ghost btn-small', '复制');
+        copy.type = 'button';
+        copy.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(item.url);
+            toast('链接已复制');
+          } catch {
+            renderCopyBox(els.inviteLinkResult, '复制失败，请手动选中这条链接', item.url);
+          }
+        });
+        row.appendChild(copy);
+      }
+      els.inviteTokenList.appendChild(row);
+    }
+  }
+
+  async function loadInviteCandidates(preferId) {
+    try {
+      const data = await api('/api/people');
+      const people = Array.isArray(data.people) ? data.people : [];
+      const inRoom = new Set(currentMembers().map((member) => member.id));
+      invitePeople = people.filter((person) => person && person.id && person.status === 'active' && !inRoom.has(person.id));
+      if (preferId && invitePeople.some((person) => person.id === preferId)) inviteSelectedId = preferId;
+      else if (inviteSelectedId && !invitePeople.some((person) => person.id === inviteSelectedId)) inviteSelectedId = '';
+      renderInviteList();
+    } catch (error) {
+      invitePeople = [];
+      inviteSelectedId = '';
+      els.inviteList.textContent = '';
+      els.inviteList.appendChild(el('div', 'person-empty', '身份列表加载失败：' + (error.message || '未知错误')));
+      setFormError(els.inviteError, '身份列表加载失败：' + (error.message || '未知错误'));
+    }
+    updateInviteSubmit();
+  }
+
+  function renderInviteList() {
+    els.inviteList.textContent = '';
+    if (!invitePeople.length) {
+      els.inviteList.appendChild(el('div', 'person-empty', '没有可加入的 active 身份。可以在下面开通一个新身份。'));
+      return;
+    }
+    for (const person of invitePeople) {
+      const row = el('button', 'person-row');
+      row.type = 'button';
+      row.dataset.personId = person.id;
+      row.setAttribute('aria-pressed', String(person.id === inviteSelectedId));
+      const main = el('div', 'person-main');
+      main.appendChild(el('div', 'person-name', person.name || person.id));
+      main.appendChild(el('div', 'person-meta', personMeta(person)));
+      row.appendChild(main);
+      row.appendChild(el('span', 'person-mark', '✓'));
+      row.addEventListener('click', () => {
+        inviteSelectedId = inviteSelectedId === person.id ? '' : person.id;
+        for (const other of els.inviteList.querySelectorAll('.person-row')) {
+          other.setAttribute('aria-pressed', String(other.dataset.personId === inviteSelectedId));
+        }
+        updateInviteSubmit();
+      });
+      els.inviteList.appendChild(row);
+    }
+  }
+
+  function updateInviteSubmit() {
+    const person = invitePeople.find((p) => p.id === inviteSelectedId);
+    els.inviteSubmit.disabled = inviteBusy || !person;
+    els.inviteSubmit.textContent = inviteBusy ? '拉入中…' : (person ? '拉入 ' + person.name : '拉入');
+  }
+
+  async function createPerson() {
+    const name = els.newPersonName.value.trim();
+    const kind = els.newPersonKind.value === 'agent' ? 'agent' : 'human';
+    setFormError(els.inviteError, '');
+    if (!name) {
+      setFormError(els.inviteError, '给新身份起个名字。');
+      els.newPersonName.focus();
+      return;
+    }
+    els.createPersonBtn.disabled = true;
+    els.createPersonBtn.textContent = '开通中…';
+    try {
+      const data = await api('/api/people', { method: 'POST', body: JSON.stringify({ who: state.who, name, kind }) });
+      const person = data.person || {};
+      els.newPersonName.value = '';
+      renderCopyBox(els.newPersonResult, '「' + (person.name || name) + '」的一次性 key（只显示这一次，请复制保存）', data.key || '');
+      toast('已开通新身份：' + (person.name || name));
+      inviteSelectedId = person.id || '';
+      await loadInviteCandidates(inviteSelectedId);
+    } catch (error) {
+      setFormError(els.inviteError, '开通失败：' + error.message);
+    } finally {
+      els.createPersonBtn.disabled = false;
+      els.createPersonBtn.textContent = '开通';
+    }
+  }
+
+  function inviteLink(roomId, code) {
+    return location.origin + location.pathname + '?k=' + encodeURIComponent(keyParam())
+      + '&join=' + encodeURIComponent(roomId) + '&code=' + encodeURIComponent(code);
+  }
+
+  async function submitInvite() {
+    if (inviteBusy) return;
+    const person = invitePeople.find((p) => p.id === inviteSelectedId);
+    if (!person || !state.currentId) return;
+    if (!canManageMembers()) {
+      setFormError(els.inviteError, '只有群主能在进行中的房间里拉人。');
+      return;
+    }
+    inviteBusy = true;
+    setFormError(els.inviteError, '');
+    updateInviteSubmit();
+    try {
+      const data = await api('/api/rooms/' + encodeURIComponent(state.currentId) + '/invite', {
+        method: 'POST',
+        body: JSON.stringify({ who: state.who, memberId: person.id }),
+      });
+      if (data.url) {
+        renderCopyBox(els.inviteLinkResult, '邀请链接（发给「' + person.name + '」）', data.url);
+        toast('已拉入，邀请链接已生成');
+      } else {
+        els.inviteLinkResult.hidden = true;
+        toast('已拉入房间');
+      }
+      inviteSelectedId = '';
+      await loadRooms();
+      await refreshCurrentRoom();
+      await loadInviteCandidates();
+      await loadInviteTokens();
+    } catch (error) {
+      setFormError(els.inviteError, '拉入失败：' + error.message);
+    } finally {
+      inviteBusy = false;
+      updateInviteSubmit();
+    }
+  }
+
+  function openKickDialog() {
+    if (!canManageMembers()) return;
+    setFormError(els.kickError, '');
+    renderKickList();
+    if (!els.kickDialog.open) els.kickDialog.showModal();
+  }
+
+  function renderKickList() {
+    els.kickList.textContent = '';
+    const members = currentMembers().filter((member) => member.id !== 'you');
+    if (!members.length) {
+      els.kickList.appendChild(el('div', 'person-empty', '房间里没有可以移出的其他成员。'));
+      return;
+    }
+    for (const member of members) {
+      const row = el('div', 'person-row kick-row');
+      const main = el('div', 'person-main');
+      main.appendChild(el('div', 'person-name', member.name || nameOf(member.id)));
+      main.appendChild(el('div', 'person-meta', personMeta(member)));
+      row.appendChild(main);
+      const button = el('button', 'btn btn-ghost', '移出');
+      button.type = 'button';
+      button.addEventListener('click', () => kickMember(member, button));
+      row.appendChild(button);
+      els.kickList.appendChild(row);
+    }
+  }
+
+  async function kickMember(member, button) {
+    if (!state.currentId || !canManageMembers()) return;
+    button.disabled = true;
+    button.textContent = '移出中…';
+    setFormError(els.kickError, '');
+    try {
+      await api('/api/rooms/' + encodeURIComponent(state.currentId) + '/kick', {
+        method: 'POST',
+        body: JSON.stringify({ who: 'you', memberId: member.id }),
+      });
+      toast('已移出 ' + (member.name || nameOf(member.id)));
+      await loadRooms();
+      await refreshCurrentRoom();
+      renderKickList();
+    } catch (error) {
+      setFormError(els.kickError, '移出失败：' + error.message);
+      button.disabled = false;
+      button.textContent = '移出';
+    }
+  }
+
+  function openRulesDialog() {
+    if (!canManageMembers()) return;
+    const rules = state.detail.room.rules || {};
+    const ms = Number(rules.quietMs);
+    const seconds = Number.isFinite(ms) && ms >= 0 ? Math.round(ms / 1000) : 180;
+    els.rulesQuiet.value = String(seconds);
+    els.rulesAck.checked = !!rules.ackRequired;
+    els.rulesNote.value = typeof rules.note === 'string' ? rules.note : '';
+    setFormError(els.rulesError, '');
+    if (!els.rulesDialog.open) els.rulesDialog.showModal();
+    setTimeout(() => els.rulesQuiet.focus(), 30);
+  }
+
+  async function saveRules() {
+    if (!state.currentId || !canManageMembers()) return;
+    const seconds = Number(els.rulesQuiet.value);
+    if (!Number.isFinite(seconds) || seconds < 0) {
+      setFormError(els.rulesError, '静默提醒要填不小于 0 的秒数。');
+      els.rulesQuiet.focus();
+      return;
+    }
+    els.rulesSave.disabled = true;
+    els.rulesSave.textContent = '保存中…';
+    setFormError(els.rulesError, '');
+    try {
+      const data = await api('/api/rooms/' + encodeURIComponent(state.currentId) + '/rules', {
+        method: 'POST',
+        body: JSON.stringify({
+          who: 'you',
+          rules: {
+            quietMs: Math.round(seconds * 1000),
+            ackRequired: els.rulesAck.checked,
+            note: els.rulesNote.value.trim(),
+          },
+        }),
+      });
+      if (state.detail && data.room) state.detail.room = Object.assign({}, state.detail.room, data.room);
+      els.rulesDialog.close();
+      toast('规则已保存');
+    } catch (error) {
+      setFormError(els.rulesError, '保存失败：' + error.message);
+    } finally {
+      els.rulesSave.disabled = false;
+      els.rulesSave.textContent = '保存';
+    }
+  }
+
+  /* ---------- 事件绑定 ---------- */
+
+  function bindEvents() {
+    els.newRoomBtn.addEventListener('click', openNewRoom);
+    els.onlyOpenBtn.addEventListener('click', () => {
+      state.archiveView = !state.archiveView;
+      localStorage.setItem('ds-teams:archiveView', state.archiveView ? '1' : '0');
+      if (state.archiveView) loadArchive();
+      else renderRooms();
+    });
+    els.archiveRoomBtn.addEventListener('click', archiveCurrentRoom);
+    els.newRoomForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      createRoom();
+    });
+    els.newRoomCancel.addEventListener('click', () => els.newRoomDialog.close());
+    els.closeRoomBtn.addEventListener('click', closeRoom);
+    els.closeDenyBtn.addEventListener('click', () => decideClose('denied'));
+    els.closeApproveBtn.addEventListener('click', () => decideClose('approved'));
+
+    els.inviteBtn.addEventListener('click', openInviteDialog);
+    els.inviteClose.addEventListener('click', () => els.inviteDialog.close());
+    els.genInviteBtn.addEventListener('click', generateInvite);
+    els.createPersonBtn.addEventListener('click', createPerson);
+    els.inviteSubmit.addEventListener('click', submitInvite);
+    els.newPersonName.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.isComposing) {
+        event.preventDefault();
+        createPerson();
+      }
+    });
+    els.kickBtn.addEventListener('click', openKickDialog);
+    els.kickClose.addEventListener('click', () => els.kickDialog.close());
+    els.memberRoleBtn.addEventListener('click', setMemberRole);
+    els.memberTransferBtn.addEventListener('click', transferOwner);
+    els.memberClose.addEventListener('click', () => els.memberDialog.close());
+    els.rulesBtn.addEventListener('click', openRulesDialog);
+    els.rulesCancel.addEventListener('click', () => els.rulesDialog.close());
+    els.rulesSave.addEventListener('click', saveRules);
+    for (const field of [els.rulesQuiet, els.rulesNote]) {
+      field.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.isComposing) {
+          event.preventDefault();
+          saveRules();
+        }
+      });
+    }
+
+    els.syncBtn.addEventListener('click', async () => { await syncMessages(); refreshRoomsQuiet(); toast('已同步'); });
+    els.latencyChip.addEventListener('click', toggleLatencyWarn);
+    els.sessionsChip.addEventListener('click', () => {
+      stopSessionsTimer();
+      els.sessionsChip.hidden = true;
+    });
+
+    els.reportsBtn.addEventListener('click', () => setReportsOpen(!state.reportsOpen));
+    els.reportsClose.addEventListener('click', () => setReportsOpen(false));
+    els.reportsScrim.addEventListener('click', () => setReportsOpen(false));
+
+    els.memoryBtn.addEventListener('click', () => setMemoryOpen(!state.memoryOpen));
+    els.memoryClose.addEventListener('click', () => setMemoryOpen(false));
+    els.memoryScrim.addEventListener('click', () => setMemoryOpen(false));
+    els.memorySend.addEventListener('click', sendMemory);
+    els.memoryInput.addEventListener('input', () => {
+      autoGrowMemory();
+      updateMemoryComposer();
+    });
+    els.memoryInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        sendMemory();
+      }
+    });
+
+    els.sendBtn.addEventListener('click', sendMessage);
+    // 全局的 touch-action:manipulation 让我们省掉了 300ms 点击延迟，代价是浏览器不再
+    // 为点击自动「保住焦点」：手指一按发送，textarea 先失焦、键盘收到 blur 就收起来，
+    // 发送完成后 focus() 又把键盘拉回来——用户看到的就是「按发送→键盘落下→又弹起」。
+    // mousedown 上 preventDefault 能阻止焦点转移，但 click 照常派发（这是老办法，最稳）；
+    // 不要用 touchstart 拦，那会把 click 一起吞掉。
+    const keepFocus = (event) => { event.preventDefault(); els.input.focus(); };
+    els.sendBtn.addEventListener('mousedown', keepFocus);
+    els.attachBtn.addEventListener('mousedown', keepFocus);
+    els.quoteCancel.addEventListener('click', () => { clearQuote(); els.input.focus(); });
+    els.attachBtn.addEventListener('click', () => {
+      if (!state.detail || state.detail.room.status !== 'open') return void toast('房间已解散，仅可回看。', true);
+      els.fileInput.click();
+    });
+    els.fileInput.addEventListener('change', () => {
+      const file = els.fileInput.files && els.fileInput.files[0];
+      els.fileInput.value = '';
+      if (file) uploadFile(file);
+    });
+    els.input.addEventListener('input', () => {
+      autoGrow();
+      updateComposer();
+    });
+    els.input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+      // 手机软键盘没有 Shift 键：回车必须是换行，发送只走「发送」按钮。
+      // 否则手机上永远打不出第二行，输入框也就不会长高。
+      if (isTouchUI()) return;
+      event.preventDefault();
+      sendMessage();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        if (state.memoryOpen) setMemoryOpen(false);
+        if (state.reportsOpen) setReportsOpen(false);
+      }
+    });
+
+    // 切后台就断开 SSE（手机锁屏 / 换 App 时省电：长连接会吊着无线网不放）。
+    // 15 秒宽限：只是想复制一条消息、瞄一眼通知就回来的，不断线，省一次重连。
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        clearTimeout(state.hideTimer);
+        state.hideTimer = setTimeout(() => {
+          state.hideTimer = null;
+          if (document.visibilityState === 'hidden') closeSSE(true);
+        }, 15000);
+        return;
+      }
+      clearTimeout(state.hideTimer);
+      state.hideTimer = null;
+      if (!state.currentId) return;
+      if (!state.sse) {
+        if (state.reconnectTimer) {
+          clearTimeout(state.reconnectTimer);
+          state.reconnectTimer = null;
+        }
+        connectSSE();
+      }
+      scheduleRoomsRefresh();
+      scheduleMetaRefresh();
+    });
+
+    window.addEventListener('online', () => {
+      if (state.currentId && !state.sse) connectSSE();
+    });
+
+    els.authForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const value = els.authKey.value.trim();
+      if (!value) return;
+      location.href = location.pathname + '?k=' + encodeURIComponent(value);
+    });
+
+    if (els.loginForm) els.loginForm.addEventListener('submit', submitLogin);
+  }
+
+  /* ---------- 启动 ---------- */
+
+  async function boot() {
+    const joinRequest = takeJoinParams();
+    buildIdentity();
+    bindEvents();
+    initViewport(); // 软键盘开合时把可视区高度喂给 --app-height
+    setConn('', '未连接');
+    watchHot(); // 登录卡片上也开着：改 ui.html 立刻能看到效果
+
+    // 身份只有一个来源：服务端会话 cookie。没有会话就停在登录页，绝不放行任何界面。
+    // 2026-11-05：以前这里是「拉 /api/member 拿 key，没 key 就回落 you」，
+    // 于是任何拿到隧道链接的人点开就是群主。key 不再下发，这条退路也一并删掉。
+    // 这里不能用 api()：它把 ok:false 当错误抛出，而 whoami 的「还没登录」正是 ok:false。
+    let who = null;
+    try {
+      const res = await fetch(withKey('/api/auth/whoami'), { credentials: 'same-origin', headers: { accept: 'application/json' } });
+      if (res.status === 401) { showAuth(); return; }
+      who = await res.json();
+    } catch {
+      who = null;
+    }
+    if (!who || who.ok !== true) {
+      showLogin(who && who.setupNeeded ? 'register' : 'login');
+      return;
+    }
+    state.who = who.id;
+    state.isSuper = !!who.isSuper;
+    els.loginOverlay.hidden = true;
+
+    // 「新建房间」只给超管（规格第零条）。没选房间时也要先判一次，所以开门就问一次。
+    await refreshMe();
+    buildIdentity();
+    if (els.newRoomBtn) els.newRoomBtn.hidden = !(state.me && state.me.isSuper);
+
+    // 轮询兜底：隧道/反向代理会缓冲 SSE，这里定期补增量，保证远端也能看到新消息
+    setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      syncMessages();
+    }, 3000);
+    setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      scheduleRoomsRefresh();
+    }, 6000);
+    // 元信息兜底：正常走 SSE 的 event: meta（毫秒级）；隧道/反代会缓冲 SSE，
+    // 这里 10 秒对一次成员与状态，最坏也就慢一个轮询周期，不会永远停在旧快照。
+    setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      syncRoomMeta();
+    }, 10000);
+    // 台账 mtime 轮询：只有在页面打开时才跑，接口自己还有 2 秒节流
+    setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      refreshSessionsChip();
+    }, 2000);
+
+    // 身份轮询（权限 v4）：2 秒问一次「我能干什么」，同时给服务端刷在线状态。
+    // 举两个靠它才能对的场景：超管在别的页面收到解散弹窗；管理员被人设成管理员后按钮自己长出来。
+    setInterval(async () => {
+      if (document.visibilityState !== 'visible' || !state.detail) return;
+      const before = signatureOf(state.me);
+      await refreshMe();
+      const after = signatureOf(state.me);
+      // 能力没变就只刷横幅，不整块重画头部（重画会把「再点一次确认」的待确认态清掉）
+      if (before !== after) renderHeader();
+      else renderPendingClose();
+    }, 2000);
+
+    try {
+      await loadRooms();
+    } catch (error) {
+      showEmpty('加载失败', error.message || '请确认服务已启动。');
+      toast('加载房间失败：' + error.message, true);
+      return;
+    }
+
+    // 邀请链接：先加入，再直接打开目标房间；失败就退回上次的房间
+    if (joinRequest) {
+      try {
+        await api('/api/rooms/' + encodeURIComponent(joinRequest.roomId) + '/join', {
+          method: 'POST',
+          body: JSON.stringify({ code: joinRequest.code }),
+        });
+        toast('已加入房间');
+        await loadRooms();
+        await selectRoom(joinRequest.roomId);
+        return;
+      } catch (error) {
+        toast('加入失败：' + error.message, true);
+      }
+    }
+
+    // 打开房间的优先级：URL 里点名的那间 > 上次看的那间 > 列表第一间。
+    // 以前只看 localStorage，于是别人发来的「直达链接」点进来还停在自己上次那间，
+    // 看着像「链接给错了 / 我不是群主了」。
+    let wanted = '';
+    try { wanted = new URLSearchParams(location.search).get('room') || ''; } catch {}
+    const savedRoom = wanted || localStorage.getItem('ds-teams:room') || '';
+    const pick = state.rooms.find((room) => room.id === savedRoom) || state.rooms[0];
+    if (pick) await selectRoom(pick.id);
+    else showEmpty('还没有房间', '点右上角「新建房间」开始。');
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+﻿{"rooms":[{"id":"room-zz","title":"t","status":"open","members":["you","me","daman"],"floor":null}],
+ "messages":[
+  {"seq":1,"roomId":"room-zz","who":"me","kind":"text","text":"你好，问一下","ts":"2026-11-02T14:00:00.000Z"},
+  {"seq":2,"roomId":"room-zz","who":"daman","kind":"text","text":"在","ts":"2026-11-02T14:00:05.000Z"},
+  {"seq":3,"roomId":"room-zz","who":"me","kind":"text","text":"@群主 收到请回","ts":"2026-11-02T14:00:10.000Z"},
+  {"seq":4,"roomId":"room-zz","who":"daman","kind":"text","text":"收到","ts":"2026-11-02T14:00:15.000Z"}
+ ]}
+

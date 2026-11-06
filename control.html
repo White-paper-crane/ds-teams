@@ -1,0 +1,2005 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>ds-teams · 控制面</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --panel-2: #fafbfc;
+    --line: #d7dce5;
+    --line-soft: #e9edf2;
+    --ink: #1b1f27;
+    --muted: #5b6472;
+    --faint: #7c8493;
+    --blue: #2563eb;
+    --blue-soft: #edf3ff;
+    --blue-line: #c7d8fb;
+    --amber: #985a06;
+    --amber-soft: #fdf4e4;
+    --amber-line: #ecd5a7;
+    --green: #0e7a50;
+    --green-soft: #eaf6f0;
+    --green-line: #bfe3d2;
+    --red: #b32626;
+    --red-soft: #fcefef;
+    --red-line: #efc6c6;
+    --radius: 6px;
+    --mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+
+  html, body { margin: 0; height: 100%; }
+  body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink);
+    font: 13.5px/1.55 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre, time { font-variant-numeric: tabular-nums; }
+  ::selection { background: #d7e4ff; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #c3cad6; border: 3px solid transparent; background-clip: content-box; border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: #b3bccb; background-clip: content-box; }
+
+  /* ---------- 顶部 ---------- */
+  .topbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    min-height: 56px;
+    padding: 0 18px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 188px; }
+  .brand-mark {
+    width: 28px;
+    height: 28px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel-2);
+  }
+  .brand-mark i { display: block; width: 5px; height: 5px; border-radius: 50%; background: var(--blue); }
+  .brand-mark i:nth-child(2) { background: var(--green); }
+  .brand-mark i:nth-child(3) { background: var(--amber); }
+  .brand-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+  .brand-text strong { font-size: 14px; font-weight: 650; letter-spacing: .1px; white-space: nowrap; }
+  .brand-text small { font-size: 10.5px; color: var(--faint); white-space: nowrap; }
+
+  .counts { flex: 1; display: flex; align-items: stretch; justify-content: flex-end; min-width: 0; }
+  .count {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 86px;
+    padding: 0 18px;
+    border-left: 1px solid var(--line-soft);
+  }
+  .count-label { font-size: 10.5px; line-height: 1.3; color: var(--faint); }
+  .count-value { font-size: 18px; font-weight: 600; line-height: 1.25; font-variant-numeric: tabular-nums; }
+  .count[data-count="running"] .count-value { color: var(--blue); }
+  .count[data-count="review"] .count-value { color: var(--amber); }
+  .count[data-count="blocked"] .count-value { color: var(--amber); }
+  .count[data-count="done"] .count-value { color: var(--green); }
+
+  .top-actions { flex: none; display: flex; align-items: center; gap: 12px; }
+  .conn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .conn .dot { display: block; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+  .conn.is-ok .dot { background: var(--green); }
+  .conn.is-busy .dot { background: var(--amber); }
+  .conn.is-err .dot { background: var(--red); }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 11px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+    color: var(--ink);
+    font-size: 12.5px;
+    line-height: 1.3;
+    white-space: nowrap;
+    transition: background .12s ease, border-color .12s ease;
+  }
+  .btn:hover { background: var(--panel-2); border-color: #c3cad6; }
+  .btn:active { background: #eef1f5; }
+  .btn:disabled { opacity: .42; cursor: not-allowed; }
+  .btn-small { padding: 4px 9px; font-size: 12px; }
+  .btn-approve { background: var(--green); border-color: var(--green); color: #ffffff; font-weight: 600; }
+  .btn-approve:hover { background: #0b6642; border-color: #0b6642; }
+  .btn-reject { background: var(--panel); border-color: var(--red-line); color: var(--red); }
+  .btn-reject:hover { background: var(--red-soft); border-color: var(--red); }
+
+  /* ---------- 通知条 ---------- */
+  .demo {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 18px;
+    border-bottom: 1px solid var(--amber-line);
+    background: var(--amber-soft);
+    color: var(--amber);
+    font-size: 12px;
+  }
+  .demo strong { font-weight: 650; }
+  .demo .btn { margin-left: auto; }
+  .flash {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 18px;
+    border-bottom: 1px solid var(--green-line);
+    background: var(--green-soft);
+    color: var(--green);
+    font-size: 12.5px;
+  }
+  .flash.is-err { background: var(--red-soft); border-color: var(--red-line); color: var(--red); }
+  .flash-x { border: 0; background: transparent; color: inherit; font-size: 16px; line-height: 1; padding: 2px 4px; opacity: .7; }
+  .flash-x:hover { opacity: 1; }
+  .banner {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 18px;
+    border-bottom: 1px solid var(--amber-line);
+    background: var(--amber-soft);
+    color: var(--amber);
+    font-size: 12.5px;
+  }
+  .banner.is-err { background: var(--red-soft); border-color: var(--red-line); color: var(--red); }
+  .banner-text { min-width: 0; overflow-wrap: anywhere; }
+  .banner .btn { margin-left: auto; flex: none; }
+
+  /* ---------- 主布局 ---------- */
+  .app { flex: 1; display: grid; grid-template-columns: 360px minmax(0, 1fr); min-height: 0; }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+  }
+  .side-head { flex: none; padding: 14px 14px 10px; border-bottom: 1px solid var(--line-soft); }
+  .side-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .side-title-row h2 { margin: 0; font-size: 13px; font-weight: 650; }
+  .hint { font-size: 11px; color: var(--faint); }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 9px; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.6;
+  }
+  .chip:hover { background: var(--panel-2); border-color: #bfc7d3; }
+  .chip b { font-weight: 550; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .chip.is-on { color: var(--blue); border-color: var(--blue-line); background: var(--blue-soft); }
+  .chip.is-on b { color: var(--blue); }
+  .project-filter { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--faint); }
+  .project-filter select {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 7px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+    color: var(--ink);
+    font-size: 12.5px;
+  }
+
+  .tasklist { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 8px 14px; }
+  .task-item {
+    display: block;
+    width: 100%;
+    margin: 2px 0;
+    padding: 9px 10px 8px;
+    border: 1px solid transparent;
+    border-left: 3px solid var(--line);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+  }
+  .task-item:hover { background: var(--panel-2); border-color: var(--line-soft); border-left-color: #c3cad6; }
+  .task-item.is-active { background: var(--blue-soft); border-color: var(--blue-line); border-left-color: var(--blue); }
+  .task-item.st-run { border-left-color: var(--blue); }
+  .task-item.st-review { border-left-color: var(--amber); }
+  .task-item.st-blocked { border-left-color: var(--amber); }
+  .task-item.st-failed { border-left-color: var(--red); }
+  .task-item.st-done { border-left-color: var(--green); }
+  .ti-top { display: flex; align-items: flex-start; gap: 7px; }
+  .ti-title {
+    flex: 1;
+    min-width: 0;
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 12.8px;
+    font-weight: 600;
+    line-height: 1.4;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow-wrap: anywhere;
+  }
+  .ti-state {
+    flex: none;
+    padding: 0 6px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel-2);
+    color: var(--muted);
+    font-size: 10.5px;
+    line-height: 17px;
+    white-space: nowrap;
+  }
+  .ti-state.st-run { color: var(--blue); background: var(--blue-soft); border-color: var(--blue-line); }
+  .ti-state.st-review, .ti-state.st-blocked { color: var(--amber); background: var(--amber-soft); border-color: var(--amber-line); }
+  .ti-state.st-failed { color: var(--red); background: var(--red-soft); border-color: var(--red-line); }
+  .ti-state.st-done { color: var(--green); background: var(--green-soft); border-color: var(--green-line); }
+  .ti-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 5px; font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .ti-meta span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ti-meta .sep { color: #c3cad6; }
+  .list-state { padding: 26px 14px; text-align: center; color: var(--faint); font-size: 12px; line-height: 1.8; }
+  .list-state .btn { margin-top: 8px; }
+  .side-foot {
+    flex: none;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--line-soft);
+    color: var(--faint);
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- 详情 ---------- */
+  .detail { min-width: 0; min-height: 0; overflow-y: auto; background: var(--panel); outline: none; }
+  .detail-inner { max-width: 1040px; margin: 0 auto; padding: 20px 26px 56px; }
+  .detail-head { padding-bottom: 14px; }
+  .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; color: var(--faint); font-size: 11px; }
+  .crumbs code { padding: 0 5px; border: 1px solid var(--line-soft); border-radius: 3px; background: var(--panel-2); color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .crumb-sep { color: #c3cad6; }
+  .crumb-key { font-family: var(--mono); font-size: 10.5px; color: var(--faint); overflow-wrap: anywhere; }
+  .h1-row { display: flex; align-items: flex-start; gap: 10px; margin: 5px 0 6px; }
+  .h1-row h1 { flex: 1; min-width: 0; margin: 0; font-size: 19px; font-weight: 650; line-height: 1.35; letter-spacing: -.1px; overflow-wrap: anywhere; }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--muted); font-size: 11.5px; }
+  .meta b { margin-right: 4px; color: var(--faint); font-weight: 550; }
+  .meta code { font-family: var(--mono); }
+
+  .st {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+    padding: 0 8px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel-2);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 550;
+    line-height: 19px;
+    white-space: nowrap;
+  }
+  .st::before { content: ""; display: block; width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .85; }
+  .st-run { color: var(--blue); background: var(--blue-soft); border-color: var(--blue-line); }
+  .st-review { color: var(--amber); background: var(--amber-soft); border-color: var(--amber-line); }
+  .st-blocked { color: var(--amber); background: var(--amber-soft); border-color: var(--amber-line); }
+  .st-failed { color: var(--red); background: var(--red-soft); border-color: var(--red-line); }
+  .st-done { color: var(--green); background: var(--green-soft); border-color: var(--green-line); }
+
+  .action {
+    margin: 14px 0 4px;
+    padding: 12px 14px;
+    border: 1px solid var(--amber-line);
+    border-radius: var(--radius);
+    background: var(--amber-soft);
+  }
+  .action-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+  .action-head h2 { margin: 0; color: var(--amber); font-size: 12.5px; font-weight: 650; }
+  .action-note { margin: 0 0 8px; color: var(--amber); font-size: 11.5px; line-height: 1.55; }
+  .action-label { display: block; margin: 0 0 4px; color: var(--amber); font-size: 10.5px; }
+  .action textarea {
+    display: block;
+    width: 100%;
+    min-height: 46px;
+    padding: 7px 9px;
+    resize: vertical;
+    border: 1px solid var(--amber-line);
+    border-radius: 5px;
+    background: var(--panel);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .action textarea:focus { outline: 2px solid #dcb063; outline-offset: 0; border-color: #d0a04a; }
+  .action-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+  .action-msg { margin-right: auto; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+  .action-msg.is-err { color: var(--red); }
+  .action-msg.is-ok { color: var(--green); }
+
+  .block { padding: 16px 0; border-top: 1px solid var(--line-soft); }
+  .block h2 { margin: 0; color: var(--faint); font-size: 11px; font-weight: 650; letter-spacing: .06em; }
+  .block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  .block-head .hint { flex: none; font-size: 10.5px; }
+  .split { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(220px, 1fr); gap: 0 28px; }
+  .split-side { min-width: 0; }
+  .block-head-sub { margin-top: 16px; }
+
+  .checklist { margin: 0; padding-left: 19px; font-size: 12.8px; line-height: 1.65; }
+  .checklist li { margin: 3px 0; padding-left: 2px; overflow-wrap: anywhere; }
+  .prose { margin: 0; font-size: 12.8px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .empty-line { margin: 0; color: var(--faint); font-size: 12px; line-height: 1.6; }
+  .scope-list { display: flex; flex-wrap: wrap; gap: 5px; margin: 0; padding: 0; list-style: none; }
+  .scope-list code { padding: 1px 6px; border: 1px solid var(--line-soft); border-radius: 3px; background: var(--panel-2); font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
+  .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; margin: 0; font-size: 11.5px; }
+  .kv dt { color: var(--faint); }
+  .kv dd { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+
+  .gate-status { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .verdict {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--panel-2);
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.6;
+  }
+  .verdict.pass { color: var(--green); background: var(--green-soft); border-color: var(--green-line); }
+  .verdict.fail { color: var(--red); background: var(--red-soft); border-color: var(--red-line); }
+  .verdict.unknown { color: var(--muted); background: var(--panel-2); border-color: var(--line); }
+  .gate-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0; }
+  .gm { min-width: 0; padding: 6px 8px; border: 1px solid var(--line-soft); border-radius: 4px; background: var(--panel-2); }
+  .gm b { display: block; margin-bottom: 2px; color: var(--faint); font-size: 10px; font-weight: 550; }
+  .gm span { font-size: 12px; overflow-wrap: anywhere; }
+  .cmd {
+    max-height: 120px;
+    margin: 0 0 10px;
+    padding: 7px 9px;
+    overflow: auto;
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    background: var(--panel-2);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .log-label { display: flex; justify-content: space-between; gap: 10px; margin: 8px 0 4px; color: var(--faint); font-size: 10.5px; }
+  .log {
+    max-height: 220px;
+    margin: 0;
+    padding: 8px 10px;
+    overflow: auto;
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    background: #fbfcfd;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .log.is-err { background: var(--red-soft); border-color: var(--red-line); color: #7d1d1d; }
+  .log.is-empty { color: var(--faint); }
+  .evidence { display: flex; flex-wrap: wrap; gap: 5px; margin: 0; padding: 0; list-style: none; }
+  .evidence code { padding: 1px 6px; border: 1px solid var(--line-soft); border-radius: 3px; background: var(--panel-2); font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
+  .evidence a { font-family: var(--mono); font-size: 11px; }
+
+  .atable { overflow: hidden; border: 1px solid var(--line-soft); border-radius: 4px; }
+  .art-head, .art-row { display: grid; grid-template-columns: minmax(0, 1fr) 86px 156px; gap: 12px; padding: 6px 10px; }
+  .art-head { border-bottom: 1px solid var(--line-soft); background: var(--panel-2); color: var(--faint); font-size: 10px; }
+  .art-row { border-top: 1px solid var(--line-soft); font-size: 11.5px; }
+  .art-row:first-child { border-top: 0; }
+  .art-path { min-width: 0; overflow-wrap: anywhere; }
+  .art-path code { font-family: var(--mono); font-size: 11px; }
+  .art-path a { margin-left: 6px; font-size: 11px; }
+  .art-size { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .art-sha { color: var(--faint); font-family: var(--mono); font-size: 10.5px; text-align: right; overflow-wrap: anywhere; }
+
+  .events { position: relative; margin: 0; padding: 0; list-style: none; }
+  .events::before { content: ""; position: absolute; top: 6px; bottom: 6px; left: 76px; width: 1px; background: var(--line-soft); }
+  .event { position: relative; display: grid; grid-template-columns: 68px 14px minmax(0, 1fr); gap: 4px 4px; padding: 5px 0; }
+  .event time { color: var(--faint); font-size: 10.5px; line-height: 1.7; text-align: right; }
+  .ev-dot { z-index: 1; justify-self: center; width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: var(--blue); }
+  .ev-dot.amber { background: var(--amber); }
+  .ev-dot.green { background: var(--green); }
+  .ev-dot.red { background: var(--red); }
+  .ev-dot.gray { background: var(--faint); }
+  .ev-body { min-width: 0; }
+  .ev-line { font-size: 12px; line-height: 1.55; }
+  .ev-type { font-weight: 600; }
+  .ev-by { margin-left: 6px; color: var(--faint); font-size: 11px; }
+  .ev-text { max-height: 130px; margin: 1px 0 0; overflow: auto; color: var(--muted); font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  .reviews { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .review { padding: 7px 10px; border: 1px solid var(--line-soft); border-radius: 4px; background: var(--panel-2); }
+  .review-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 11.5px; }
+  .review-by { font-weight: 600; }
+  .review-top time { color: var(--faint); font-size: 10.5px; }
+  .review-note { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  .center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 62vh;
+    padding: 30px;
+    text-align: center;
+  }
+  .center .mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: var(--panel-2);
+    color: var(--faint);
+    font-size: 15px;
+  }
+  .center.is-err .mark { color: var(--red); background: var(--red-soft); border-color: var(--red-line); }
+  .center h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  .center p { max-width: 480px; margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.7; overflow-wrap: anywhere; }
+  .center .hint { max-width: 480px; font-size: 11px; }
+  .center .btn { margin-top: 6px; }
+
+  @media (max-width: 980px) {
+    .app { grid-template-columns: 320px minmax(0, 1fr); }
+    .count { min-width: 70px; padding: 0 12px; }
+    .split { grid-template-columns: 1fr; gap: 0; }
+    .split-side { margin-top: 14px; }
+  }
+
+  @media (max-width: 860px) {
+    body { height: auto; min-height: 100vh; overflow: auto; }
+    .topbar { flex-wrap: wrap; gap: 8px 14px; min-height: 0; padding: 8px 14px; }
+    .brand { min-width: 0; }
+    .counts { order: 3; flex-basis: 100%; justify-content: space-between; padding-top: 6px; border-top: 1px solid var(--line-soft); }
+    .count { flex: 1; min-width: 0; padding: 0 8px; }
+    .count:first-child { padding-left: 0; border-left: 0; }
+    .count-value { font-size: 16px; }
+    .top-actions { margin-left: auto; }
+    .app { display: block; }
+    .sidebar { max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }
+    .tasklist { max-height: 40vh; overflow-y: auto; padding-bottom: 8px; }
+    .detail { overflow: visible; min-height: 50vh; }
+    .detail-inner { padding: 16px 15px 40px; }
+    .h1-row h1 { font-size: 17px; }
+    .gate-meta { grid-template-columns: 1fr 1fr; }
+    .art-head, .art-row { grid-template-columns: minmax(0, 1fr) 74px; grid-template-areas: "path size" "sha sha"; gap: 2px 10px; }
+    .art-path { grid-area: path; }
+    .art-size { grid-area: size; }
+    .art-sha { grid-area: sha; text-align: left; }
+    .art-head span:last-child { display: none; }
+    .events::before { left: 66px; }
+    .event { grid-template-columns: 58px 14px minmax(0, 1fr); }
+  }
+
+  @media (max-width: 520px) {
+    .brand-text small { display: none; }
+    .count-label { font-size: 10px; }
+    .meta { gap: 3px 12px; }
+    .action-foot .btn { flex: 1; }
+    .action-msg { flex-basis: 100%; }
+    .gate-meta { grid-template-columns: 1fr; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="brand-text">
+        <strong>ds-teams · 控制面</strong>
+        <small>单任务台账 · 人工审批</small>
+      </span>
+    </div>
+    <div class="counts" aria-label="任务汇总">
+      <div class="count" data-count="running" title="queued / claimed / spawned / running">
+        <span class="count-label">运行中</span>
+        <span class="count-value" id="countRunning">—</span>
+      </div>
+      <div class="count" data-count="review" title="reported，等待人工审批">
+        <span class="count-label">待审</span>
+        <span class="count-value" id="countReview">—</span>
+      </div>
+      <div class="count" data-count="blocked" title="blocked">
+        <span class="count-label">阻塞</span>
+        <span class="count-value" id="countBlocked">—</span>
+      </div>
+      <div class="count" data-count="done" title="今天完成的 done / reviewed">
+        <span class="count-label">今日完成</span>
+        <span class="count-value" id="countDone">—</span>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span class="conn" id="conn" aria-live="polite"><i class="dot"></i><span id="connText">连接中</span></span>
+      <button type="button" class="btn" id="refreshBtn" title="立即刷新（每 5 秒也会自动刷新）">↻ 刷新</button>
+    </div>
+  </header>
+
+  <div class="demo" id="demoBar" hidden>
+    <strong>预览模式</strong>
+    <span>?demo=1：使用内置样例数据，不读取真实台账，也不会提交审批。</span>
+    <button type="button" class="btn btn-small" id="demoExit">退出预览</button>
+  </div>
+
+  <div class="flash" id="flash" role="status" hidden>
+    <span id="flashText"></span>
+    <button type="button" class="flash-x" id="flashClose" aria-label="关闭提示">×</button>
+  </div>
+
+  <div class="banner" id="banner" role="alert" hidden>
+    <span class="banner-text" id="bannerText"></span>
+    <button type="button" class="btn btn-small" id="bannerRetry">重试</button>
+  </div>
+
+  <main class="app">
+    <aside class="sidebar" aria-label="任务列表">
+      <div class="side-head">
+        <div class="side-title-row">
+          <h2>任务</h2>
+          <span class="hint" id="listCount">0 条</span>
+        </div>
+        <div class="chips" id="stateChips" role="group" aria-label="状态筛选">
+          <button type="button" class="chip is-on" data-filter="all">全部 <b data-chip-count="all">0</b></button>
+          <button type="button" class="chip" data-filter="run">进行中 <b data-chip-count="run">0</b></button>
+          <button type="button" class="chip" data-filter="review">待审 <b data-chip-count="review">0</b></button>
+          <button type="button" class="chip" data-filter="blocked">阻塞 <b data-chip-count="blocked">0</b></button>
+          <button type="button" class="chip" data-filter="failed">失败 <b data-chip-count="failed">0</b></button>
+          <button type="button" class="chip" data-filter="done">完成 <b data-chip-count="done">0</b></button>
+        </div>
+        <label class="project-filter">
+          <span>项目</span>
+          <select id="projectSelect" aria-label="项目筛选">
+            <option value="">全部项目</option>
+          </select>
+        </label>
+      </div>
+      <div class="tasklist" id="taskList" aria-live="polite"></div>
+      <footer class="side-foot">
+        <span id="autoHint">每 5 秒自动刷新</span>
+        <span id="updatedAt">尚未更新</span>
+      </footer>
+    </aside>
+
+    <section class="detail" id="detail" aria-label="任务详情" tabindex="-1"></section>
+  </main>
+
+<script>
+(function () {
+  'use strict';
+
+  var DEMO = new URLSearchParams(location.search).get('demo') === '1';
+  var REFRESH_MS = 5000;
+  var FETCH_TIMEOUT = 12000;
+
+  var STATES = {
+    queued: { g: 'run', l: '排队中' },
+    claimed: { g: 'run', l: '已领取' },
+    spawned: { g: 'run', l: '已派发' },
+    running: { g: 'run', l: '进行中' },
+    reported: { g: 'review', l: '待审' },
+    blocked: { g: 'blocked', l: '阻塞' },
+    done: { g: 'done', l: '已完成' },
+    reviewed: { g: 'done', l: '已复核' },
+    accepted: { g: 'done', l: '已批准' },
+    completed: { g: 'done', l: '已完成' },
+    failed: { g: 'failed', l: '失败' },
+    timeout: { g: 'failed', l: '超时' },
+    interrupted: { g: 'failed', l: '中断' },
+    aborted: { g: 'idle', l: '已中止' }
+  };
+
+  var EVENT_LABELS = {
+    created: '创建',
+    create: '创建',
+    queued: '排队',
+    claimed: '领取',
+    claim: '领取',
+    started: '开始',
+    start: '开始',
+    running: '进行中',
+    progress: '进展',
+    gate: 'Gate 校验',
+    verify: '校验',
+    artifact: '交付物',
+    artifacts: '交付物',
+    state: '状态',
+    reported: '上报',
+    report: '上报',
+    review: '评审',
+    reviewed: '复核',
+    accepted: '批准',
+    accept: '批准',
+    rejected: '驳回',
+    reject: '驳回',
+    blocked: '阻塞',
+    failed: '失败',
+    fail: '失败',
+    timeout: '超时',
+    done: '完成',
+    updated: '更新',
+    update: '更新'
+  };
+
+  var els = {};
+  var state = {
+    demo: DEMO,
+    tasks: [],
+    projects: [],
+    rawCounts: null,
+    counts: { running: 0, review: 0, blocked: 0, doneToday: 0 },
+    selectedKey: null,
+    filterState: 'all',
+    filterProject: '',
+    loading: true,
+    error: null,
+    lastUpdated: null,
+    hadData: false,
+    fetching: false,
+    queuedRefresh: false,
+    online: navigator.onLine,
+    actionBusy: null,
+    actionError: '',
+    actionNotice: '',
+    noteDraft: Object.create(null),
+    listSig: '',
+    detailSig: '',
+    projectSig: '',
+    flashTimer: null
+  };
+
+  /* ---------- 基础工具 ---------- */
+
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+    });
+  }
+  function attr(value) { return esc(value); }
+  function has(value) { return value !== undefined && value !== null && value !== ''; }
+  function pick(obj, keys) {
+    if (!obj || typeof obj !== 'object') return undefined;
+    for (var i = 0; i < keys.length; i++) {
+      var v = obj[keys[i]];
+      if (v !== undefined && v !== null && v !== '') return v;
+    }
+    return undefined;
+  }
+  function toArray(value) {
+    if (Array.isArray(value)) return value;
+    if (value === undefined || value === null || value === '') return [];
+    return [value];
+  }
+  function asText(value) {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    try { return JSON.stringify(value); } catch (e) { return String(value); }
+  }
+  function nameOf(value) {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'string' || typeof value === 'number') return String(value);
+    if (typeof value === 'object') return String(value.name || value.id || value.slug || '');
+    return String(value);
+  }
+  function pad2(n) { return n < 10 ? '0' + n : String(n); }
+  function parseDate(value) {
+    if (value === undefined || value === null || value === '') return null;
+    if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+    var ms = typeof value === 'number' ? value : Date.parse(value);
+    if (!isFinite(ms)) return null;
+    var d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function fmtFull(value) {
+    var d = parseDate(value);
+    if (!d) return '—';
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' +
+      pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+  }
+  function fmtShort(value) {
+    var d = parseDate(value);
+    if (!d) return '—';
+    return pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function fmtClock(value) {
+    var d = parseDate(value);
+    if (!d) return '—';
+    return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+  }
+  function fmtRel(value) {
+    var d = parseDate(value);
+    if (!d) return '—';
+    var seconds = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (seconds < 60) return '刚刚';
+    if (seconds < 3600) return Math.floor(seconds / 60) + ' 分钟前';
+    if (seconds < 86400) return Math.floor(seconds / 3600) + ' 小时前';
+    if (seconds < 7 * 86400) return Math.floor(seconds / 86400) + ' 天前';
+    return fmtShort(value);
+  }
+  function isToday(value) {
+    var d = parseDate(value);
+    if (!d) return false;
+    var now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  }
+  function fmtDur(value) {
+    if (value === undefined || value === null || value === '') return '—';
+    if (typeof value === 'string') {
+      var raw = value.trim();
+      var numeric = Number(raw);
+      if (raw && isFinite(numeric) && /^[0-9.]+$/.test(raw)) return fmtDur(numeric);
+      return raw;
+    }
+    var ms = Number(value);
+    if (!isFinite(ms)) return String(value);
+    if (ms < 1000) return Math.round(ms) + ' ms';
+    var seconds = ms / 1000;
+    if (seconds < 60) return (seconds < 10 ? seconds.toFixed(1) : String(Math.round(seconds))) + ' s';
+    var minutes = Math.floor(seconds / 60);
+    var rest = Math.round(seconds % 60);
+    return minutes + ' 分 ' + (rest < 10 ? '0' : '') + rest + ' 秒';
+  }
+  function fmtSize(value) {
+    if (value === undefined || value === null || value === '') return '—';
+    if (typeof value === 'string') return value;
+    var n = Number(value);
+    if (!isFinite(n)) return String(value);
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB';
+    if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+    return (n / 1073741824).toFixed(1) + ' GB';
+  }
+  function stateInfo(value) {
+    var key = String(value == null ? '' : value).toLowerCase();
+    return STATES[key] || { g: 'idle', l: String(value == null ? '未知' : value) };
+  }
+  function pillClass(group) { return 'st st-' + group; }
+  function ownerOf(task) {
+    var value = task && (task.owner || task.assignee);
+    return nameOf(value) || '未指派';
+  }
+  function taskTitle(task) {
+    return String((task && (task.title || task.name)) || (task && (task.id || task.key)) || '未命名任务');
+  }
+  function taskIdOf(task) {
+    if (!task) return '';
+    if (has(task.id)) return task.id;
+    if (has(task.taskId)) return task.taskId;
+    return task._key || '';
+  }
+  function taskKeyOf(task) {
+    if (!task) return '';
+    if (task.key) return task.key;
+    if (task._key) return task._key;
+    if (has(task.projectId) && has(task.taskId)) return task.projectId + '::' + task.taskId;
+    return taskIdOf(task);
+  }
+  function projectIdOf(task) {
+    if (!task) return '';
+    if (has(task.projectId)) return String(task.projectId);
+    if (task.project && typeof task.project === 'object') return String(task.project.id || task.project.slug || '');
+    if (typeof task.project === 'string') return task.project;
+    if (has(task.roomId)) return String(task.roomId);
+    return '';
+  }
+  function projectName(id) {
+    if (!id) return '未分项目';
+    for (var i = 0; i < state.projects.length; i++) {
+      if (state.projects[i].id === id) return state.projects[i].name;
+    }
+    return id;
+  }
+  function projectTone(id) {
+    if (!id) return '';
+    for (var i = 0; i < state.projects.length; i++) {
+      if (state.projects[i].id === id) return state.projects[i].name;
+    }
+    return id;
+  }
+
+  /* ---------- 数据整理 ---------- */
+
+  function normalizeTasks(raw) {
+    var rows = [];
+    if (Array.isArray(raw)) {
+      rows = raw;
+    } else if (raw && typeof raw === 'object') {
+      rows = Object.keys(raw).map(function (key) {
+        var item = raw[key];
+        if (item && typeof item === 'object') {
+          if (!has(item.key)) item = Object.assign({}, item, { key: key });
+          return item;
+        }
+        return { key: key, title: String(item) };
+      });
+    }
+    var seen = Object.create(null);
+    var out = [];
+    for (var i = 0; i < rows.length; i++) {
+      var task = rows[i];
+      if (!task || typeof task !== 'object') continue;
+      var key = String(has(task.key) ? task.key : (has(task.id) ? task.id : 'task-' + i));
+      if (seen[key]) key = key + '#' + i;
+      seen[key] = true;
+      var pid = projectIdOf(task);
+      var pname = '';
+      if (task.project && typeof task.project === 'object') pname = nameOf(task.project.name || task.project.title || '');
+      if (!pname && has(task.projectName)) pname = nameOf(task.projectName);
+      out.push(Object.assign({}, task, { _key: key, _pid: pid, _pname: pname }));
+    }
+    return out;
+  }
+
+  function buildProjects(raw, tasks) {
+    var map = Object.create(null);
+    function add(id, name) {
+      id = String(id == null ? '' : id);
+      if (!id) return;
+      if (!map[id]) map[id] = { id: id, name: String(name || id) };
+    }
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) {
+        var p = raw[i];
+        if (typeof p === 'string') add(p, p);
+        else if (p && typeof p === 'object') add(p.id || p.slug || p.key || p.name, p.name || p.title || p.label || p.id || p.slug);
+      }
+    } else if (raw && typeof raw === 'object') {
+      Object.keys(raw).forEach(function (id) {
+        var v = raw[id];
+        if (typeof v === 'string') add(id, v);
+        else if (v && typeof v === 'object') add(id, v.name || v.title || v.label || id);
+        else add(id, id);
+      });
+    }
+    for (var j = 0; j < tasks.length; j++) {
+      var t = tasks[j];
+      if (t._pid) add(t._pid, t._pname || t._pid);
+    }
+    var list = Object.keys(map).map(function (id) { return map[id]; });
+    list.sort(function (a, b) { return a.name.localeCompare(b.name, 'zh-CN'); });
+    return list;
+  }
+
+  function deriveCounts(tasks) {
+    var c = { running: 0, review: 0, blocked: 0, failed: 0, done: 0, doneToday: 0 };
+    for (var i = 0; i < tasks.length; i++) {
+      var t = tasks[i];
+      var group = stateInfo(t.state).g;
+      if (group === 'run') c.running++;
+      if (group === 'review') c.review++;
+      if (group === 'blocked') c.blocked++;
+      if (group === 'failed') c.failed++;
+      if (group === 'done') {
+        c.done++;
+        if (isToday(t.completedAt || t.updatedAt || t.createdAt)) c.doneToday++;
+      }
+    }
+    return c;
+  }
+  function resolveCounts(raw, derived) {
+    var byState = raw && raw.byState && typeof raw.byState === 'object' ? raw.byState : null;
+    function sumState(keys) {
+      if (!byState) return null;
+      var total = 0;
+      var found = false;
+      for (var i = 0; i < keys.length; i++) {
+        var value = byState[keys[i]];
+        if (typeof value === 'number' && isFinite(value)) {
+          total += value;
+          found = true;
+        }
+      }
+      return found ? total : null;
+    }
+    function numberFrom(keys, fallback) {
+      if (raw && typeof raw === 'object') {
+        for (var i = 0; i < keys.length; i++) {
+          var v = raw[keys[i]];
+          if (typeof v === 'number' && isFinite(v)) return v;
+        }
+      }
+      return fallback;
+    }
+    var runningByState = sumState(['queued', 'claimed', 'spawned', 'running']);
+    var reviewByState = sumState(['reported']);
+    var blockedByState = sumState(['blocked']);
+    return {
+      running: runningByState !== null ? runningByState : numberFrom(['running', 'inProgress', 'runningCount'], derived.running),
+      review: reviewByState !== null ? reviewByState : numberFrom(['pendingReview', 'review', 'reported', 'pending', 'pendingReviews'], derived.review),
+      blocked: blockedByState !== null ? blockedByState : numberFrom(['blocked', 'stuck'], derived.blocked),
+      doneToday: numberFrom(['doneToday', 'completedToday', 'todayDone'], derived.doneToday)
+    };
+  }
+  function sortTasks(tasks) {
+    var rank = { review: 0, run: 1, blocked: 2, failed: 3, idle: 4, done: 5 };
+    return tasks.slice().sort(function (a, b) {
+      var ga = rank[stateInfo(a.state).g] === undefined ? 9 : rank[stateInfo(a.state).g];
+      var gb = rank[stateInfo(b.state).g] === undefined ? 9 : rank[stateInfo(b.state).g];
+      if (ga !== gb) return ga - gb;
+      var ta = parseDate(a.updatedAt || a.createdAt);
+      var tb = parseDate(b.updatedAt || b.createdAt);
+      return (tb ? tb.getTime() : 0) - (ta ? ta.getTime() : 0);
+    });
+  }
+  function matchesFilter(task, filter) {
+    var group = stateInfo(task.state).g;
+    if (filter === 'all') return true;
+    return group === filter;
+  }
+  function visibleTasks() {
+    return state.tasks.filter(function (task) {
+      if (!matchesFilter(task, state.filterState)) return false;
+      if (!state.filterProject) return true;
+      if (state.filterProject === '__none__') return !task._pid;
+      return task._pid === state.filterProject;
+    });
+  }
+  function currentTask() {
+    if (!state.selectedKey) return null;
+    for (var i = 0; i < state.tasks.length; i++) {
+      if (state.tasks[i]._key === state.selectedKey) return state.tasks[i];
+    }
+    return null;
+  }
+
+  /* ---------- Gate / artifacts / events ---------- */
+
+  function gateOf(task) {
+    var gate = task && task.gate;
+    if (!gate || typeof gate !== 'object') return null;
+    if (gate.last && typeof gate.last === 'object') return gate.last;
+    if (has(gate.pass) || has(gate.command) || has(gate.exitCode) || has(gate.exit_code)) return gate;
+    return null;
+  }
+  function passValue(gate) {
+    if (!gate || typeof gate !== 'object') return null;
+    var value = pick(gate, ['pass', 'passed', 'success', 'ok']);
+    if (value === undefined) return null;
+    if (value === true || value === 1) return true;
+    if (value === false || value === 0) return false;
+    var text = String(value).toLowerCase();
+    if (text === 'true' || text === 'pass' || text === 'passed' || text === 'ok' || text === 'success') return true;
+    if (text === 'false' || text === 'fail' || text === 'failed') return false;
+    return null;
+  }
+  function tailText(value, max) {
+    var text = value === undefined || value === null ? '' : (typeof value === 'string' ? value : asText(value));
+    max = max || 4000;
+    return {
+      text: text.length > max ? text.slice(-max) : text,
+      total: text.length,
+      cut: text.length > max
+    };
+  }
+  function evidenceOf(gate) {
+    var raw = pick(gate, ['evidence', 'evidencePath', 'evidence_path', 'evidencePaths', 'log', 'logs']);
+    return toArray(raw).map(function (item) {
+      if (item && typeof item === 'object') return String(item.path || item.file || item.url || asText(item));
+      return String(item);
+    }).filter(function (item) { return item.trim(); });
+  }
+  function isLocalUrl(url) {
+    return typeof url === 'string' && /^\/(?!\/)/.test(url);
+  }
+  function artifactsOf(value) {
+    return toArray(value).map(function (item) {
+      if (typeof item === 'string') return { path: item };
+      if (item && typeof item === 'object') return item;
+      return { path: asText(item) };
+    }).filter(function (item) {
+      return has(item.path) || has(item.file) || has(item.name) || has(item.url);
+    });
+  }
+  function verdictInfo(value) {
+    var text = String(value == null ? '' : value).toLowerCase();
+    if (text === 'pass' || text === 'passed' || text === 'ok' || text === 'approve' || text === 'approved' || text === '通过') {
+      return { tone: 'pass', label: '通过' };
+    }
+    if (text === 'fail' || text === 'failed' || text === 'reject' || text === 'rejected' || text === '不通过' || text === '驳回') {
+      return { tone: 'fail', label: '未通过' };
+    }
+    return { tone: 'unknown', label: value == null || value === '' ? '—' : String(value) };
+  }
+  function reviewsOf(value) {
+    return toArray(value).map(function (item) {
+      if (typeof item === 'string') return { note: item };
+      if (item && typeof item === 'object') return item;
+      return { note: asText(item) };
+    });
+  }
+  function eventTime(event) {
+    return event && (event.at || event.ts || event.time || event.createdAt || event.updatedAt);
+  }
+  function eventsOf(value) {
+    return toArray(value).filter(function (item) {
+      return item && typeof item === 'object';
+    }).map(function (event, index) {
+      var d = parseDate(eventTime(event));
+      return { event: event, index: index, ms: d ? d.getTime() : -1 };
+    }).sort(function (a, b) {
+      return b.ms - a.ms;
+    }).map(function (item) {
+      return item.event;
+    });
+  }
+  function eventTone(type, event) {
+    var text = String(type || '').toLowerCase();
+    var pass = event && (event.pass !== undefined ? event.pass : event.ok);
+    if (pass === false || /fail|reject|error|timeout|block/.test(text)) return 'red';
+    if (pass === true || /accept|approve|done|pass|complete|reviewed/.test(text)) return 'green';
+    if (/report|gate|review|artifact/.test(text)) return 'amber';
+    return 'blue';
+  }
+
+  /* ---------- 渲染 ---------- */
+
+  function renderCounts() {
+    var show = state.hadData;
+    els.countRunning.textContent = show ? state.counts.running : '—';
+    els.countReview.textContent = show ? state.counts.review : '—';
+    els.countBlocked.textContent = show ? state.counts.blocked : '—';
+    els.countDone.textContent = show ? state.counts.doneToday : '—';
+  }
+
+  function renderChips() {
+    var derived = deriveCounts(state.tasks);
+    var values = {
+      all: state.tasks.length,
+      run: derived.running,
+      review: derived.review,
+      blocked: derived.blocked,
+      failed: derived.failed,
+      done: derived.done
+    };
+    var counts = document.querySelectorAll('[data-chip-count]');
+    for (var i = 0; i < counts.length; i++) {
+      var key = counts[i].getAttribute('data-chip-count');
+      counts[i].textContent = String(values[key] === undefined ? 0 : values[key]);
+    }
+    var chips = document.querySelectorAll('#stateChips [data-filter]');
+    for (var j = 0; j < chips.length; j++) {
+      chips[j].classList.toggle('is-on', chips[j].getAttribute('data-filter') === state.filterState);
+    }
+  }
+
+  function renderProjectSelect() {
+    var sig = state.projects.map(function (p) { return p.id + '\u0000' + p.name; }).join('\u0001') + '|' +
+      state.tasks.some(function (t) { return !t._pid; });
+    if (sig !== state.projectSig) {
+      state.projectSig = sig;
+      var html = ['<option value="">全部项目</option>'];
+      for (var i = 0; i < state.projects.length; i++) {
+        var p = state.projects[i];
+        html.push('<option value="' + attr(p.id) + '">' + esc(p.name) + '</option>');
+      }
+      if (state.tasks.some(function (t) { return !t._pid; })) {
+        html.push('<option value="__none__">未分项目</option>');
+      }
+      els.projectSelect.innerHTML = html.join('');
+    }
+    var valid = state.filterProject === '' || state.filterProject === '__none__' ||
+      state.projects.some(function (p) { return p.id === state.filterProject; });
+    if (!valid) state.filterProject = '';
+    els.projectSelect.value = state.filterProject;
+  }
+
+  function listEmptyHTML() {
+    if (state.loading && !state.hadData) return '<div class="list-state">正在读取任务台账…</div>';
+    if (state.error && !state.hadData) {
+      return '<div class="list-state">任务列表加载失败。<br><button type="button" class="btn btn-small" data-retry>重试</button></div>';
+    }
+    if (!state.tasks.length) return '<div class="list-state">台账里还没有任务。</div>';
+    return '<div class="list-state">当前筛选下没有任务。<br><button type="button" class="btn btn-small" data-clear-filter>清除筛选</button></div>';
+  }
+
+  function taskItemHTML(task) {
+    var info = stateInfo(task.state);
+    var group = info.g;
+    var active = task._key === state.selectedKey;
+    var meta = [projectName(task._pid), ownerOf(task), fmtRel(task.updatedAt || task.createdAt)];
+    if (Number(task.attempts) > 1) meta.push('第 ' + task.attempts + ' 次');
+    var metaHTML = meta.map(function (part, index) {
+      return (index ? '<span class="sep">·</span>' : '') + '<span>' + esc(part) + '</span>';
+    }).join('');
+    return '<button type="button" class="task-item st-' + group + (active ? ' is-active' : '') + '" data-key="' + attr(task._key) + '" aria-current="' + (active ? 'true' : 'false') + '">' +
+      '<span class="ti-top"><span class="ti-title">' + esc(taskTitle(task)) + '</span><span class="ti-state st-' + group + '">' + esc(info.l) + '</span></span>' +
+      '<span class="ti-meta">' + metaHTML + '</span>' +
+      '</button>';
+  }
+
+  function renderList(force) {
+    var visible = visibleTasks();
+    els.listCount.textContent = visible.length + ' / ' + state.tasks.length + ' 条';
+    var sig = state.tasks.length + '|' + state.filterState + '|' + state.filterProject + '|' +
+      visible.map(function (t) {
+        return [t._key, t.state, taskTitle(t), ownerOf(t), t.updatedAt || '', t._pid, t.attempts || 0].join('\u0000');
+      }).join('\u0001');
+    if (!force && sig === state.listSig) return;
+    state.listSig = sig;
+    var scrollTop = els.taskList.scrollTop;
+    els.taskList.innerHTML = visible.length ? visible.map(taskItemHTML).join('') : listEmptyHTML();
+    els.taskList.scrollTop = scrollTop;
+  }
+
+  function acceptanceHTML(value) {
+    if (Array.isArray(value)) {
+      var items = value.map(asText).filter(function (item) { return item.trim(); });
+      if (items.length) {
+        return '<ol class="checklist">' + items.map(function (item) { return '<li>' + esc(item) + '</li>'; }).join('') + '</ol>';
+      }
+    } else if (typeof value === 'string' && value.trim()) {
+      return '<p class="prose">' + esc(value) + '</p>';
+    } else if (value && typeof value === 'object') {
+      return '<p class="prose">' + esc(asText(value)) + '</p>';
+    }
+    return '<p class="empty-line">未填写验收标准。</p>';
+  }
+
+  function scopeHTML(value) {
+    var items = [];
+    if (Array.isArray(value)) {
+      items = value.map(asText);
+    } else if (typeof value === 'string') {
+      items = value.split(/[\n,]+/).map(function (item) { return item.trim(); });
+    } else if (value) {
+      items = [asText(value)];
+    }
+    items = items.filter(function (item) { return item.trim(); });
+    if (!items.length) return '<p class="empty-line">未声明写入范围。</p>';
+    return '<ul class="scope-list">' + items.map(function (item) { return '<li><code>' + esc(item) + '</code></li>'; }).join('') + '</ul>';
+  }
+
+  function taskTimeHTML(task) {
+    var rows = [
+      ['创建', task.createdAt],
+      ['领取', task.claimedAt],
+      ['更新', task.updatedAt || task.createdAt]
+    ];
+    return '<dl class="kv">' + rows.map(function (row) {
+      return '<dt>' + esc(row[0]) + '</dt><dd title="' + attr(fmtFull(row[1])) + '">' + esc(fmtFull(row[1])) + '</dd>';
+    }).join('') + '</dl>';
+  }
+
+  function gateHTML(gate) {
+    if (!gate) {
+      return '<div class="gate-empty"><p class="empty-line">gate 尚未运行（gate.last 为空）。</p>' +
+        '<p class="hint">任务进入 gate 后，这里会显示命令、退出码、耗时和 stdout / stderr 尾部。</p></div>';
+    }
+    var pass = passValue(gate);
+    var verdict = pass === true ? { tone: 'pass', label: '通过' } :
+      pass === false ? { tone: 'fail', label: '未通过' } : { tone: 'unknown', label: '结果未知' };
+    var commandRaw = pick(gate, ['command', 'cmd', 'script', 'run']);
+    var command = Array.isArray(commandRaw) ? commandRaw.join(' ') : asText(commandRaw);
+    var exitCode = pick(gate, ['exitCode', 'exit_code', 'code', 'exit']);
+    var duration = pick(gate, ['durationMs', 'duration_ms', 'elapsedMs', 'elapsed_ms', 'duration', 'ms']);
+    var finishedAt = pick(gate, ['at', 'finishedAt', 'endedAt', 'ts', 'time', 'startedAt']);
+    var stdout = tailText(pick(gate, ['stdoutTail', 'stdout', 'stdOut', 'out', 'output']), 4000);
+    var stderr = tailText(pick(gate, ['stderrTail', 'stderr', 'stdErr', 'err']), 4000);
+    var evidence = evidenceOf(gate);
+    var html = [];
+    html.push('<div class="gate-status"><span class="verdict ' + verdict.tone + '">' + verdict.label + '</span>' +
+      '<span class="hint">' + (pass === true ? 'gate 通过，可进入人工审批。' : pass === false ? 'gate 未通过，不能批准。' : '缺少 pass 字段，不能批准。') + '</span></div>');
+    html.push('<div class="log-label"><span>命令</span><span>command</span></div>');
+    html.push('<pre class="cmd">' + (command ? esc(command) : '（未记录命令）') + '</pre>');
+    html.push('<div class="gate-meta">' +
+      '<div class="gm"><b>退出码</b><span>' + (has(exitCode) ? esc(exitCode) : '—') + '</span></div>' +
+      '<div class="gm"><b>耗时</b><span>' + esc(fmtDur(duration)) + '</span></div>' +
+      '<div class="gm"><b>完成时间</b><span>' + esc(fmtFull(finishedAt)) + '</span></div>' +
+      '</div>');
+    html.push(logHTML('stdout 尾部', stdout, ''));
+    html.push(logHTML('stderr 尾部', stderr, 'is-err'));
+    html.push('<div class="log-label"><span>证据路径</span><span>evidence</span></div>');
+    if (evidence.length) {
+      html.push('<ul class="evidence">' + evidence.map(function (item) {
+        if (isLocalUrl(item)) return '<li><a href="' + attr(item) + '"><code>' + esc(item) + '</code></a></li>';
+        return '<li><code>' + esc(item) + '</code></li>';
+      }).join('') + '</ul>');
+    } else {
+      html.push('<p class="empty-line">未记录证据路径。</p>');
+    }
+    return html.join('');
+  }
+
+  function logHTML(label, tail, extraClass) {
+    var meta = tail.cut ? '仅末尾 ' + tail.text.length.toLocaleString('zh-CN') + ' / ' + tail.total.toLocaleString('zh-CN') + ' 字符' : '';
+    return '<div class="log-label"><span>' + esc(label) + '</span><span>' + esc(meta) + '</span></div>' +
+      '<pre class="log' + (extraClass ? ' ' + extraClass : '') + (tail.text ? '' : ' is-empty') + '">' + (tail.text ? esc(tail.text) : '（空）') + '</pre>';
+  }
+
+  function artifactsHTML(value) {
+    var items = artifactsOf(value);
+    if (!items.length) return '<p class="empty-line">暂无交付物（artifacts 为空）。</p>';
+    var rows = items.map(function (item) {
+      var path = item.path || item.file || item.name || item.url || '（无路径）';
+      var size = fmtSize(item.size !== undefined ? item.size : (item.bytes !== undefined ? item.bytes : item.byteSize));
+      var fullSha = String(item.sha256 || item.hash || item.digest || '').replace(/^sha256:/i, '');
+      var sha = fullSha ? (fullSha.length > 12 ? fullSha.slice(0, 12) + '…' : fullSha) : '—';
+      var link = item.url && isLocalUrl(item.url) ? ' <a href="' + attr(item.url) + '">打开</a>' : '';
+      return '<div class="art-row">' +
+        '<span class="art-path"><code>' + esc(path) + '</code>' + link + '</span>' +
+        '<span class="art-size">' + esc(size) + '</span>' +
+        '<span class="art-sha" title="' + attr(fullSha || '—') + '">' + esc(sha) + '</span>' +
+        '</div>';
+    }).join('');
+    return '<div class="atable"><div class="art-head"><span>路径</span><span>大小</span><span>sha256</span></div>' + rows + '</div>';
+  }
+
+  function eventsOrderLabel(value) {
+    var events = eventsOf(value);
+    if (!events.length) return 'events';
+    var timed = events.filter(function (event) { return parseDate(eventTime(event)); }).length;
+    if (!timed) return 'events · 原始顺序';
+    if (timed === events.length) return 'events · 时间倒序（最新在上）';
+    return 'events · 时间倒序（无时间条目排后）';
+  }
+
+  function eventsHTML(value) {
+    var events = eventsOf(value);
+    if (!events.length) return '<p class="empty-line">暂无事件。</p>';
+    return '<ol class="events">' + events.map(function (event) {
+      var rawType = String(event.type || event.kind || event.event || event.action || 'event');
+      var label = EVENT_LABELS[rawType.toLowerCase()] || rawType;
+      var by = nameOf(event.by || event.actor || event.who || event.owner);
+      var at = eventTime(event);
+      var textValue = event.text !== undefined ? event.text :
+        (event.message !== undefined ? event.message :
+          (event.note !== undefined ? event.note : event.detail));
+      var text = textValue === undefined || textValue === null ? '' : asText(textValue);
+      return '<li class="event">' +
+        '<time title="' + attr(fmtFull(at)) + '">' + esc(fmtShort(at)) + '</time>' +
+        '<span class="ev-dot ' + eventTone(rawType, event) + '"></span>' +
+        '<div class="ev-body"><div class="ev-line"><span class="ev-type">' + esc(label) + '</span>' +
+        (by ? '<span class="ev-by">' + esc(by) + '</span>' : '') + '</div>' +
+        (text.trim() ? '<p class="ev-text">' + esc(text) + '</p>' : '') + '</div>' +
+        '</li>';
+    }).join('') + '</ol>';
+  }
+
+  function reviewsHTML(value) {
+    var reviews = reviewsOf(value);
+    if (!reviews.length) return '<p class="empty-line">暂无人工评审记录。</p>';
+    return '<ul class="reviews">' + reviews.map(function (review) {
+      var verdict = verdictInfo(pick(review, ['verdict', 'result', 'status', 'ok']));
+      var by = nameOf(pick(review, ['by', 'reviewer', 'actor', 'who', 'owner'])) || '—';
+      var at = pick(review, ['at', 'ts', 'time', 'createdAt']);
+      var note = pick(review, ['note', 'text', 'message', 'reason', 'detail']);
+      return '<li class="review"><div class="review-top">' +
+        '<span class="verdict ' + verdict.tone + '">' + esc(verdict.label) + '</span>' +
+        '<span class="review-by">' + esc(by) + '</span>' +
+        '<time title="' + attr(fmtFull(at)) + '">' + esc(fmtShort(at)) + '</time>' +
+        '</div>' + (note ? '<p class="review-note">' + esc(asText(note)) + '</p>' : '') + '</li>';
+    }).join('') + '</ul>';
+  }
+
+  function actionHTML(task, gate, passed) {
+    var busy = state.actionBusy;
+    var note = state.noteDraft[task._key] || '';
+    var message;
+    if (state.actionError) message = '<span class="action-msg is-err">' + esc(state.actionError) + '</span>';
+    else if (state.actionNotice) message = '<span class="action-msg is-ok">' + esc(state.actionNotice) + '</span>';
+    else if (passed === true) message = '<span class="action-msg">gate 已通过。批准后写回 dispatch 台账并刷新。</span>';
+    else if (!note.trim()) message = '<span class="action-msg">gate 未通过或尚无 gate 结果，不能批准；驳回需先填写备注。</span>';
+    else message = '<span class="action-msg">gate 未通过或尚无 gate 结果，只能驳回。</span>';
+    var canReject = !busy && note.trim().length > 0;
+    return '<section class="action" aria-label="人工审批">' +
+      '<div class="action-head"><h2>人工审批</h2><span class="hint">state=reported</span></div>' +
+      '<p class="action-note">' + (passed === true ? 'gate.last.pass = true，可以批准；驳回会记录拒绝原因。' : '仅 gate 通过时可批准；当前只能驳回或等重跑。') + '</p>' +
+      '<label class="action-label" for="actionNote">备注（批准可选；驳回必填，随请求写入 {note}）</label>' +
+      '<textarea id="actionNote" rows="2" maxlength="2000" placeholder="批准或驳回的理由，建议写清依据…">' + esc(note) + '</textarea>' +
+      '<div class="action-foot">' + message +
+      '<button type="button" class="btn btn-approve" data-action="accept" ' + ((passed !== true || busy) ? 'disabled' : '') + ' title="' + (passed === true ? '批准并写回台账' : '需 gate.last.pass === true') + '">' + (busy === 'accept' ? '提交中…' : '批准') + '</button>' +
+      '<button type="button" class="btn btn-reject" data-action="reject" ' + (canReject ? '' : 'disabled') + ' title="' + (canReject ? '驳回并写回台账' : '驳回需先填写备注') + '">' + (busy === 'reject' ? '提交中…' : '驳回') + '</button>' +
+      '</div></section>';
+  }
+
+  function emptyDetailHTML() {
+    if (state.loading && !state.hadData) {
+      return '<div class="center"><span class="mark">…</span><h2>正在读取控制面…</h2>' +
+        '<p>请求 GET /api/control/state，首次加载可能需要几秒。</p></div>';
+    }
+    if (state.error && !state.hadData) {
+      return '<div class="center is-err"><span class="mark">!</span><h2>读不到控制面数据</h2>' +
+        '<p>' + esc(state.error) + '</p>' +
+        '<p class="hint">确认 ds-teams 服务已启动，并通过带 ?k=... 的地址打开过一次本页以取得同源 cookie；接口就绪后点重试。</p>' +
+        '<button type="button" class="btn" data-retry>重试</button></div>';
+    }
+    if (!state.tasks.length) {
+      return '<div class="center"><span class="mark">0</span><h2>台账里还没有任务</h2>' +
+        '<p>data/dispatch-state.json 没有可展示的任务记录。任务派发后会出现在左侧列表。</p>' +
+        '<button type="button" class="btn" data-retry>刷新</button></div>';
+    }
+    if (!visibleTasks().length) {
+      return '<div class="center"><span class="mark">∅</span><h2>当前筛选下没有任务</h2>' +
+        '<p>换个状态或项目筛选，或清除筛选查看全部任务。</p>' +
+        '<button type="button" class="btn" data-clear-filter>清除筛选</button></div>';
+    }
+    return '<div class="center"><span class="mark">←</span><h2>选择一个任务</h2>' +
+      '<p>左侧是任务台账。点击任意任务查看验收标准、gate 证据、交付物、事件流和人工评审。</p></div>';
+  }
+
+  function detailHTML(task) {
+    var info = stateInfo(task.state);
+    var gate = gateOf(task);
+    var passed = passValue(gate);
+    var reported = String(task.state || '').toLowerCase() === 'reported';
+    var owner = ownerOf(task);
+    var assignee = task.assignee ? nameOf(task.assignee) : '';
+    var id = taskIdOf(task);
+    var updated = task.updatedAt || task.createdAt;
+    var html = [];
+    html.push('<div class="detail-inner">');
+    html.push('<header class="detail-head">');
+    html.push('<div class="crumbs"><span>' + esc(projectName(task._pid)) + '</span><span class="crumb-sep">/</span><code>' + esc(id) + '</code>' +
+      (task.key && String(task.key) !== String(id) ? '<span class="crumb-key">' + esc(task.key) + '</span>' : '') + '</div>');
+    html.push('<div class="h1-row"><h1>' + esc(taskTitle(task)) + '</h1><span class="' + pillClass(info.g) + '">' + esc(info.l) + '</span></div>');
+    html.push('<div class="meta">' +
+      '<span><b>负责人</b>' + esc(owner) + '</span>' +
+      (assignee && assignee !== owner ? '<span><b>assignee</b>' + esc(assignee) + '</span>' : '') +
+      '<span><b>项目</b>' + esc(projectName(task._pid)) + '</span>' +
+      '<span><b>更新</b> <time title="' + attr(fmtFull(updated)) + '">' + esc(fmtRel(updated)) + '</time></span>' +
+      '<span><b>尝试</b> ' + esc(has(task.attempts) ? task.attempts : 1) + '</span>' +
+      '</div>');
+    html.push('</header>');
+    if (reported) html.push(actionHTML(task, gate, passed));
+    html.push('<section class="block"><div class="split">');
+    html.push('<div class="split-main"><div class="block-head"><h2>验收标准</h2><span class="hint">acceptance</span></div>' + acceptanceHTML(task.acceptance) + '</div>');
+    html.push('<div class="split-side"><div class="block-head"><h2>写入范围</h2><span class="hint">writeScope</span></div>' + scopeHTML(task.writeScope) +
+      '<div class="block-head block-head-sub"><h2>任务时间</h2><span class="hint">时间轴</span></div>' + taskTimeHTML(task) + '</div>');
+    html.push('</div></section>');
+    html.push('<section class="block"><div class="block-head"><h2>Gate 证据</h2><span class="hint">gate.last</span></div>' + gateHTML(gate) + '</section>');
+    html.push('<section class="block"><div class="block-head"><h2>交付物</h2><span class="hint">' + artifactsOf(task.artifacts).length + ' 个</span></div>' + artifactsHTML(task.artifacts) + '</section>');
+    html.push('<section class="block"><div class="block-head"><h2>事件流</h2><span class="hint">' + esc(eventsOrderLabel(task.events)) + '</span></div>' + eventsHTML(task.events) + '</section>');
+    html.push('<section class="block"><div class="block-head"><h2>人工评审</h2><span class="hint">' + reviewsOf(task.reviews).length + ' 条</span></div>' + reviewsHTML(task.reviews) + '</section>');
+    html.push('</div>');
+    return html.join('');
+  }
+
+  function renderDetail(force) {
+    var task = currentTask();
+    if (!task) {
+      var emptySig = 'empty|' + (state.loading ? 'loading' : '') + '|' + (state.error ? state.error : '') + '|' +
+        state.filterState + '|' + state.filterProject + '|' + state.tasks.length + '|' + visibleTasks().length;
+      if (!force && emptySig === state.detailSig) return;
+      state.detailSig = emptySig;
+      els.detail.innerHTML = emptyDetailHTML();
+      return;
+    }
+    var sig = task._key + '|' + JSON.stringify(task) + '|' + (state.actionBusy || '') + '|' + state.actionError + '|' + state.actionNotice;
+    if (!force && sig === state.detailSig) return;
+    var previousScroll = els.detail.scrollTop;
+    var oldNote = els.detail.querySelector('#actionNote');
+    var noteFocused = oldNote && document.activeElement === oldNote;
+    var selectionStart = oldNote ? oldNote.selectionStart : null;
+    var selectionEnd = oldNote ? oldNote.selectionEnd : null;
+    els.detail.innerHTML = detailHTML(task);
+    var newNote = els.detail.querySelector('#actionNote');
+    if (newNote) {
+      if (state.noteDraft[task._key]) newNote.value = state.noteDraft[task._key];
+      if (noteFocused) {
+        newNote.focus();
+        try { newNote.setSelectionRange(selectionStart, selectionEnd); } catch (e) {}
+      }
+    }
+    els.detail.scrollTop = previousScroll;
+    state.detailSig = sig;
+  }
+
+  function renderBanner() {
+    var offline = !state.online;
+    var hasError = !!state.error;
+    if (!offline && !hasError) {
+      els.banner.hidden = true;
+      return;
+    }
+    els.banner.hidden = false;
+    els.banner.classList.toggle('is-err', hasError && !offline);
+    if (offline) {
+      els.bannerText.textContent = '网络已断开。恢复联网后会自动刷新，也可以点重试立刻再试。';
+    } else if (state.hadData) {
+      els.bannerText.textContent = '自动刷新失败：' + state.error + '。当前显示上次成功的数据。';
+    } else {
+      els.bannerText.textContent = '无法读取控制面：' + state.error;
+    }
+    els.bannerRetry.disabled = state.fetching;
+  }
+
+  function renderMeta() {
+    els.updatedAt.textContent = state.lastUpdated ? '更新于 ' + fmtClock(state.lastUpdated) : '尚未更新';
+    els.autoHint.textContent = document.hidden ? '页面隐藏，自动刷新暂停' :
+      (state.demo ? '演示模式 · 不自动刷新' : '每 5 秒自动刷新');
+    els.conn.title = state.error || (state.online ? '' : '网络已断开');
+  }
+
+  function setConn(mode) {
+    els.conn.className = 'conn is-' + mode;
+    if (mode === 'busy') els.connText.textContent = '同步中…';
+    else if (mode === 'ok') els.connText.textContent = state.demo ? '演示数据' : '已连接';
+    else if (mode === 'err') els.connText.textContent = state.online ? '更新失败' : '离线';
+    else els.connText.textContent = state.online ? '连接中' : '离线';
+  }
+
+  function renderAll(force) {
+    var derived = deriveCounts(state.tasks);
+    state.counts = resolveCounts(state.rawCounts, derived);
+    renderCounts();
+    renderChips();
+    renderProjectSelect();
+    renderList(force);
+    renderDetail(force);
+    renderBanner();
+    renderMeta();
+  }
+
+  /* ---------- 加载与刷新 ---------- */
+
+  function errorText(error) {
+    if (error && error.name === 'AbortError') return '请求超时（12 秒无响应）。';
+    if (!navigator.onLine) return '网络已断开。';
+    return (error && error.message) ? error.message : String(error);
+  }
+
+  async function fetchState(signal) {
+    var response;
+    try {
+      response = await fetch('/api/control/state', {
+        method: 'GET',
+        signal: signal,
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'accept': 'application/json' }
+      });
+    } catch (error) {
+      if (error && error.name === 'AbortError') throw error;
+      if (!navigator.onLine) throw new Error('网络已断开。');
+      throw new Error('请求失败：' + ((error && error.message) || String(error)));
+    }
+    if (response.status === 401) throw new Error('未授权（401）。请先用带 ?k=... 的地址打开本页一次，取得同源 cookie。');
+    if (response.status === 404) throw new Error('接口不存在（404）。服务端尚未提供 /api/control/state。');
+    if (!response.ok) throw new Error('服务端返回 HTTP ' + response.status + '。');
+    var data;
+    try {
+      data = await response.json();
+    } catch (error) {
+      throw new Error('接口返回不是 JSON（可能被登录页或静态服务器接管）。');
+    }
+    if (!data || typeof data !== 'object') throw new Error('返回数据为空或格式不对。');
+    if (data.ok === false) throw new Error(data.error || '服务返回 ok=false。');
+    if (!data.tasks) throw new Error('返回数据缺少 tasks 字段。');
+    return data;
+  }
+
+  function applyData(data) {
+    var tasks = normalizeTasks(data.tasks);
+    var previousSelected = state.selectedKey;
+    state.projects = buildProjects(data.projects, tasks);
+    state.tasks = sortTasks(tasks);
+    state.rawCounts = data.counts || null;
+    state.hadData = true;
+    state.error = null;
+    state.loading = false;
+    state.lastUpdated = data.now || new Date().toISOString();
+    if (previousSelected && state.tasks.some(function (t) { return t._key === previousSelected; })) {
+      state.selectedKey = previousSelected;
+    } else {
+      var visible = visibleTasks();
+      state.selectedKey = visible.length ? visible[0]._key : null;
+    }
+  }
+
+  function refresh(options) {
+    options = options || {};
+    if (state.fetching) {
+      state.queuedRefresh = true;
+      return Promise.resolve();
+    }
+    state.fetching = true;
+    state.queuedRefresh = false;
+    els.refreshBtn.disabled = true;
+    els.bannerRetry.disabled = true;
+    setConn('busy');
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, FETCH_TIMEOUT);
+    var request = state.demo
+      ? new Promise(function (resolve) { setTimeout(function () { resolve(demoState()); }, 120); })
+      : fetchState(controller.signal);
+    return request.then(function (data) {
+      applyData(data);
+      state.online = navigator.onLine;
+      renderAll(!!options.force);
+    }).catch(function (error) {
+      state.loading = false;
+      state.online = navigator.onLine;
+      state.error = errorText(error);
+      renderAll(!!options.force);
+    }).then(function () {
+      clearTimeout(timer);
+      state.fetching = false;
+      els.refreshBtn.disabled = false;
+      els.bannerRetry.disabled = false;
+      setConn(state.error ? 'err' : 'ok');
+      renderMeta();
+      if (state.queuedRefresh && !state.demo) {
+        state.queuedRefresh = false;
+        setTimeout(function () { refresh({ silent: true }); }, 80);
+      }
+    });
+  }
+
+  /* ---------- 操作 ---------- */
+
+  function showFlash(text, isError) {
+    els.flash.hidden = false;
+    els.flash.classList.toggle('is-err', !!isError);
+    els.flashText.textContent = text;
+    clearTimeout(state.flashTimer);
+    state.flashTimer = setTimeout(function () { els.flash.hidden = true; }, isError ? 9000 : 5000);
+  }
+
+  function postAction(task, kind, note) {
+    var id = taskKeyOf(task);
+    var url = '/api/control/task/' + encodeURIComponent(String(id)) + '/' + kind;
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, FETCH_TIMEOUT);
+    return fetch(url, {
+      method: 'POST',
+      signal: controller.signal,
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+      body: JSON.stringify({ note: note })
+    }).then(async function (response) {
+      var data = null;
+      try { data = await response.json(); } catch (error) {}
+      if (response.status === 401) throw new Error('未授权（401）。请先用带 ?k=... 的地址打开本页一次，取得同源 cookie。');
+      if (response.status === 404) throw new Error('接口不存在（404）。服务端尚未提供该审批端点。');
+      if (!response.ok || (data && data.ok === false)) {
+        throw new Error((data && (data.error || data.message)) || ('服务端返回 HTTP ' + response.status));
+      }
+      return data;
+    }).finally(function () {
+      clearTimeout(timer);
+    });
+  }
+
+  async function submitAction(kind) {
+    if (state.actionBusy) return;
+    if (kind !== 'accept' && kind !== 'reject') return;
+    var task = currentTask();
+    if (!task) return;
+    if (String(task.state || '').toLowerCase() !== 'reported') return;
+    if (kind === 'accept' && passValue(gateOf(task)) !== true) return;
+    if (state.demo) {
+      state.actionError = '';
+      state.actionNotice = '演示模式：未提交审批请求，也未写回任何台账。';
+      state.detailSig = '';
+      renderDetail(true);
+      showFlash('演示模式：本次操作未提交。', false);
+      return;
+    }
+    var note = String(state.noteDraft[task._key] || '').trim();
+    state.actionBusy = kind;
+    state.actionError = '';
+    state.actionNotice = '';
+    state.detailSig = '';
+    renderDetail(true);
+    try {
+      await postAction(task, kind, note);
+      state.actionBusy = null;
+      state.noteDraft[task._key] = '';
+      state.actionNotice = kind === 'accept' ? '已批准，正在刷新台账…' : '已驳回，正在刷新台账…';
+      state.detailSig = '';
+      renderDetail(true);
+      showFlash(state.actionNotice, false);
+      await refresh({ silent: true, force: true });
+    } catch (error) {
+      state.actionBusy = null;
+      state.actionError = '操作失败：' + ((error && error.message) || String(error));
+      state.detailSig = '';
+      renderDetail(true);
+      showFlash(state.actionError, true);
+    }
+  }
+
+  /* ---------- 交互 ---------- */
+
+  function selectTask(key) {
+    var found = state.tasks.some(function (task) { return task._key === key; });
+    if (!found) return;
+    state.selectedKey = key;
+    state.actionError = '';
+    state.actionNotice = '';
+    state.listSig = '';
+    state.detailSig = '';
+    renderList(true);
+    renderDetail(true);
+    renderMeta();
+    if (window.matchMedia && window.matchMedia('(max-width: 860px)').matches) {
+      var detail = document.getElementById('detail');
+      if (detail) detail.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+  }
+
+  function setFilter(filter) {
+    state.filterState = filter;
+    var visible = visibleTasks();
+    if (!visible.some(function (task) { return task._key === state.selectedKey; })) {
+      state.selectedKey = visible.length ? visible[0]._key : null;
+      state.actionError = '';
+      state.actionNotice = '';
+    }
+    state.listSig = '';
+    state.detailSig = '';
+    renderAll(true);
+  }
+
+  function clearFilters() {
+    state.filterState = 'all';
+    state.filterProject = '';
+    state.listSig = '';
+    state.detailSig = '';
+    renderAll(true);
+  }
+
+  function bindEvents() {
+    els.refreshBtn.addEventListener('click', function () { refresh({ silent: false }); });
+    els.bannerRetry.addEventListener('click', function () { refresh({ silent: false }); });
+    els.flashClose.addEventListener('click', function () { els.flash.hidden = true; });
+    els.demoExit.addEventListener('click', function () {
+      var url = new URL(location.href);
+      url.searchParams.delete('demo');
+      location.href = url.toString();
+    });
+    els.stateChips.addEventListener('click', function (event) {
+      var button = event.target.closest('[data-filter]');
+      if (button) setFilter(button.getAttribute('data-filter'));
+    });
+    els.projectSelect.addEventListener('change', function () {
+      state.filterProject = els.projectSelect.value;
+      var visible = visibleTasks();
+      if (!visible.some(function (task) { return task._key === state.selectedKey; })) {
+        state.selectedKey = visible.length ? visible[0]._key : null;
+      }
+      state.listSig = '';
+      state.detailSig = '';
+      renderAll(true);
+    });
+    els.taskList.addEventListener('click', function (event) {
+      var item = event.target.closest('.task-item');
+      if (item) { selectTask(item.getAttribute('data-key')); return; }
+      if (event.target.closest('[data-retry]')) { refresh({ silent: false }); return; }
+      if (event.target.closest('[data-clear-filter]')) { clearFilters(); }
+    });
+    els.detail.addEventListener('click', function (event) {
+      var action = event.target.closest('[data-action]');
+      if (action) { submitAction(action.getAttribute('data-action')); return; }
+      if (event.target.closest('[data-retry]')) { refresh({ silent: false }); return; }
+      if (event.target.closest('[data-clear-filter]')) { clearFilters(); }
+    });
+    els.detail.addEventListener('input', function (event) {
+      if (event.target && event.target.id === 'actionNote' && state.selectedKey) {
+        state.noteDraft[state.selectedKey] = event.target.value;
+        var reject = els.detail.querySelector('[data-action="reject"]');
+        if (reject && !state.actionBusy) {
+          var filled = event.target.value.trim().length > 0;
+          reject.disabled = !filled;
+          reject.title = filled ? '驳回并写回台账' : '驳回需先填写备注';
+        }
+      }
+    });
+    document.addEventListener('visibilitychange', function () {
+      renderMeta();
+      if (!document.hidden && !state.demo) refresh({ silent: true });
+    });
+    window.addEventListener('online', function () {
+      state.online = true;
+      state.error = null;
+      renderAll(false);
+      refresh({ silent: true });
+    });
+    window.addEventListener('offline', function () {
+      state.online = false;
+      setConn('err');
+      renderBanner();
+      renderMeta();
+    });
+  }
+
+  /* ---------- 演示数据（只在 ?demo=1 下使用） ---------- */
+
+  function demoState() {
+    var now = Date.now();
+    function ago(ms) { return new Date(now - ms).toISOString(); }
+    var sha1 = '9f2a1c7e4b8d0356a1c9e7d2b4f6081a3c5e7d9b1f0a2c4e6d8b0f2a4c6e8d0b';
+    var sha2 = '3c7e1a9b5d2f4068b8a6c4d2e0f1938576453421100fedcba9876543210fedcb';
+    var sha3 = '7d5b3a1f9e8c6d4b2a0f1e3d5c7b9a8f6e4d2c0b1a3f5e7d9c8b6a4f2e0d1c3b';
+    return {
+      ok: true,
+      now: new Date(now).toISOString(),
+      projects: [
+        { id: 'proj-ds-teams', name: 'ds-teams 协作平台' },
+        { id: 'proj-research', name: '多 Agent 研究' }
+      ],
+      counts: { running: 1, pendingReview: 2, blocked: 1, doneToday: 1 },
+      tasks: [
+        {
+          key: 'proj-ds-teams::control-html',
+          id: 'control-html',
+          projectId: 'proj-ds-teams',
+          title: '构建 control.html 单控制面看板',
+          state: 'reported',
+          owner: 'dashboard-builder',
+          assignee: 'dashboard-builder',
+          createdAt: ago(3 * 3600e3),
+          updatedAt: ago(2 * 60e3),
+          claimedAt: ago(2 * 3600e3),
+          attempts: 1,
+          acceptance: [
+            '零外链、中文界面、system-ui / Microsoft YaHei',
+            '桌面左侧列表 + 右侧详情，窄屏上下堆叠',
+            '展示验收标准、gate、artifacts、events、reviews',
+            'reported 且 gate 通过时可批准；gate 未过只能驳回'
+          ],
+          writeScope: ['control.html'],
+          gate: {
+            last: {
+              command: 'node --check <inline-script>',
+              pass: true,
+              exitCode: 0,
+              durationMs: 1420,
+              at: ago(4 * 60e3),
+              stdoutTail: '[check] inline script parsed OK\n[check] external references: 0\n[check] required selectors: 42/42\n[check] demo preview rendered',
+              stderrTail: '',
+              evidencePath: 'data/gates/control-html.log'
+            }
+          },
+          artifacts: [
+            { path: 'control.html', size: 58210, sha256: sha1 }
+          ],
+          reviews: [],
+          events: [
+            { at: ago(2 * 60e3), type: 'reported', by: 'dashboard-builder', text: 'control.html 已完成自测，等待人工批准。' },
+            { at: ago(4 * 60e3), type: 'gate', by: 'dashboard-builder', text: 'gate 通过：exit=0，耗时 1.4s，证据 data/gates/control-html.log。' },
+            { at: ago(6 * 60e3), type: 'artifact', by: 'dashboard-builder', text: '产出 control.html（约 58 KB）。' },
+            { at: ago(2 * 3600e3), type: 'claimed', by: 'dashboard-builder', text: '领取任务，开始实现。' }
+          ]
+        },
+        {
+          key: 'proj-ds-teams::ledger-migrate',
+          id: 'ledger-migrate',
+          projectId: 'proj-ds-teams',
+          title: '补齐 dispatch 台账迁移脚本',
+          state: 'reported',
+          owner: 'ledger-migrator',
+          assignee: 'ledger-migrator',
+          createdAt: ago(5 * 3600e3),
+          updatedAt: ago(11 * 60e3),
+          claimedAt: ago(4 * 3600e3),
+          attempts: 2,
+          acceptance: '旧 roomId/taskId 记录迁移后 key 唯一；空台账、重复 key、缺字段都有测试覆盖。',
+          writeScope: ['scripts/migrate-ledger.mjs', 'tests/ledger-migrate.test.mjs'],
+          gate: {
+            last: {
+              command: 'node tests/ledger-migrate.test.mjs',
+              pass: false,
+              exitCode: 1,
+              durationMs: 860,
+              at: ago(12 * 60e3),
+              stdoutTail: 'ok 1 空台账\nok 2 重复 key 合并\nnot ok 3 缺字段记录\n  expected: state=queued\n  actual: state=undefined',
+              stderrTail: 'AssertionError: 缺字段记录没有被归一化\n    at tests/ledger-migrate.test.mjs:44:7',
+              evidencePath: 'data/gates/ledger-migrate.log'
+            }
+          },
+          artifacts: [],
+          reviews: [],
+          events: [
+            { at: ago(11 * 60e3), type: 'reported', by: 'ledger-migrator', text: '实现完成，gate 第 3 条用例失败，等待决定是否驳回。' },
+            { at: ago(12 * 60e3), type: 'gate', by: 'ledger-migrator', text: 'gate 未通过：exit=1。' },
+            { at: ago(4 * 3600e3), type: 'claimed', by: 'ledger-migrator', text: '领取任务（第 2 次尝试）。' }
+          ]
+        },
+        {
+          key: 'proj-ds-teams::control-api',
+          id: 'control-api',
+          projectId: 'proj-ds-teams',
+          title: '实现 GET /api/control/state 与审批端点',
+          state: 'running',
+          owner: 'lead',
+          assignee: 'lead',
+          createdAt: ago(2 * 3600e3),
+          updatedAt: ago(40e3),
+          claimedAt: ago(2 * 3600e3),
+          attempts: 1,
+          acceptance: ['返回 {ok,now,projects,counts,tasks}', 'accept/reject 只改台账并记录 review', '同源 cookie 鉴权'],
+          writeScope: ['server.mjs', 'dispatch-lib.mjs'],
+          gate: null,
+          artifacts: [],
+          reviews: [],
+          events: [
+            { at: ago(40e3), type: 'progress', by: 'lead', text: '路由已挂上，正在补 counts 聚合。' },
+            { at: ago(2 * 3600e3), type: 'claimed', by: 'lead', text: '领取任务。' }
+          ]
+        },
+        {
+          key: 'proj-ds-teams::narrow-screenshot',
+          id: 'narrow-screenshot',
+          projectId: 'proj-ds-teams',
+          title: '窄屏截图验收（390px）',
+          state: 'blocked',
+          owner: 'ui-checker',
+          assignee: 'ui-checker',
+          createdAt: ago(26 * 3600e3),
+          updatedAt: ago(3 * 3600e3),
+          claimedAt: ago(25 * 3600e3),
+          attempts: 2,
+          acceptance: '390px 下列表与详情上下堆叠；审批按钮不溢出；日志可滚动。',
+          writeScope: ['docs/screenshots/'],
+          gate: {
+            last: {
+              command: 'node scripts/screenshot.mjs --width 390',
+              pass: false,
+              exitCode: 2,
+              durationMs: 3200,
+              at: ago(3 * 3600e3),
+              stdout: 'launch browser: ok\nresize viewport: ok\nscreenshot: timeout',
+              stderr: 'Error: page.waitForSelector timeout 3000ms (#detail .action)',
+              evidence: 'data/gates/narrow-screenshot.log'
+            }
+          },
+          artifacts: [],
+          reviews: [
+            { by: 'lead', verdict: 'fail', note: '截图脚本超时，先修脚本再重跑。', at: ago(3 * 3600e3) }
+          ],
+          events: [
+            { at: ago(3 * 3600e3), type: 'blocked', by: 'ui-checker', text: '截图脚本等待 #detail .action 超时。' },
+            { at: ago(3.2 * 3600e3), type: 'gate', by: 'ui-checker', text: 'gate 未通过：exit=2。' }
+          ]
+        },
+        {
+          key: 'proj-research::topology-matrix',
+          id: 'topology-matrix',
+          projectId: 'proj-research',
+          title: '整理多 Agent 拓扑决策矩阵',
+          state: 'done',
+          owner: 'architect-adversary',
+          assignee: 'architect-adversary',
+          createdAt: ago(28 * 3600e3),
+          updatedAt: ago(70 * 60e3),
+          claimedAt: ago(27 * 3600e3),
+          attempts: 1,
+          acceptance: ['按任务类型给出拓扑建议', '标注证据与适用边界', '至少 3 个反例'],
+          writeScope: ['reports/architecture-steelman.md'],
+          gate: {
+            last: {
+              command: 'node tools/check-report.mjs reports/architecture-steelman.md',
+              pass: true,
+              exitCode: 0,
+              durationMs: 640,
+              at: ago(80 * 60e3),
+              stdout: 'sections: 6/6\ncitations: 14\ncounterexamples: 3',
+              stderr: '',
+              evidence: 'data/gates/topology-matrix.log'
+            }
+          },
+          artifacts: [
+            { path: 'reports/architecture-steelman.md', size: 24380, sha256: sha2 },
+            { path: 'docs/screenshots/topology-matrix.png', size: 184320, sha256: sha3 }
+          ],
+          reviews: [
+            { by: 'lead', verdict: 'pass', note: '矩阵可执行，反例充分。', at: ago(72 * 60e3) }
+          ],
+          events: [
+            { at: ago(70 * 60e3), type: 'done', by: 'lead', text: '复核通过，任务收口。' },
+            { at: ago(72 * 60e3), type: 'review', by: 'lead', text: '评审通过。' },
+            { at: ago(80 * 60e3), type: 'gate', by: 'architect-adversary', text: 'gate 通过。' }
+          ]
+        }
+      ]
+    };
+  }
+
+  /* ---------- 启动 ---------- */
+
+  function cacheEls() {
+    els = {
+      countRunning: document.getElementById('countRunning'),
+      countReview: document.getElementById('countReview'),
+      countBlocked: document.getElementById('countBlocked'),
+      countDone: document.getElementById('countDone'),
+      conn: document.getElementById('conn'),
+      connText: document.getElementById('connText'),
+      refreshBtn: document.getElementById('refreshBtn'),
+      demoBar: document.getElementById('demoBar'),
+      demoExit: document.getElementById('demoExit'),
+      flash: document.getElementById('flash'),
+      flashText: document.getElementById('flashText'),
+      flashClose: document.getElementById('flashClose'),
+      banner: document.getElementById('banner'),
+      bannerText: document.getElementById('bannerText'),
+      bannerRetry: document.getElementById('bannerRetry'),
+      listCount: document.getElementById('listCount'),
+      stateChips: document.getElementById('stateChips'),
+      projectSelect: document.getElementById('projectSelect'),
+      taskList: document.getElementById('taskList'),
+      autoHint: document.getElementById('autoHint'),
+      updatedAt: document.getElementById('updatedAt'),
+      detail: document.getElementById('detail')
+    };
+  }
+
+  function init() {
+    cacheEls();
+    if (state.demo) els.demoBar.hidden = false;
+    bindEvents();
+    renderAll(true);
+    refresh({ silent: false });
+    setInterval(function () {
+      if (state.demo || document.hidden) return;
+      refresh({ silent: true });
+    }, REFRESH_MS);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
